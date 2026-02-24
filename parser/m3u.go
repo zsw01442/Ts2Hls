@@ -12,17 +12,19 @@ import (
 
 // Channel 表示一个电视频道的信息
 type Channel struct {
-	ID         string // 对原始URL进行MD5加密生成的唯一ID
-	Name       string // 频道名称，从 #EXTINF 行提取
-	Group      string // 分组名称，对应 group-title
+	ID          string // 对原始URL进行MD5加密生成的唯一ID
+	Name        string // 频道名称，从 #EXTINF 行提取
+	Group       string // 分组名称，对应 group-title
+	Logo        string // 频道Logo，对应 tvg-logo
 	OriginalURL string // 原始TS流链接
-	ProxyURL   string  // 本地生成的代理m3u8链接
+	ProxyURL    string // 本地生成的代理m3u8链接
 }
 
 // ParseAndRewrite 解析原始M3U文件并生成重写后的内容
 // 参数:
 //   - filePath: 原始M3U文件路径
 //   - hostAddr: 本机地址(如 "127.0.0.1:15140")，用于生成代理URL
+//
 // 返回值:
 //   - []Channel: 解析出的频道列表
 //   - string: 重写后的M3U内容
@@ -57,6 +59,13 @@ func ParseAndRewrite(filePath, hostAddr string) ([]Channel, string, error) {
 			currentChannel = &Channel{
 				Name:  name,
 				Group: group,
+				Logo:  "",
+			}
+
+			// 提取 tvg-logo
+			logoRegex := regexp.MustCompile(`tvg-logo="([^"]*)"`)
+			if matches := logoRegex.FindStringSubmatch(line); len(matches) > 1 {
+				currentChannel.Logo = matches[1]
 			}
 		} else if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") || strings.HasPrefix(line, "rtp://") {
 			// 解析URL行
@@ -74,7 +83,7 @@ func ParseAndRewrite(filePath, hostAddr string) ([]Channel, string, error) {
 			channels = append(channels, *currentChannel)
 
 			// 写入重写后的M3U内容
-			output.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-name=\"%s\" group-title=\"%s\", %s\n", 
+			output.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-name=\"%s\" group-title=\"%s\", %s\n",
 				currentChannel.Name, currentChannel.Group, currentChannel.Name))
 			output.WriteString(currentChannel.ProxyURL + "\n")
 
@@ -89,7 +98,7 @@ func ParseAndRewrite(filePath, hostAddr string) ([]Channel, string, error) {
 	return channels, output.String(), nil
 }
 
-// parseExtinfLine 解析 #EXTINF 行，提取频道名和分组
+// parseExtinfLine 解析 #EXTINF 行，提取频道名、分组和logo
 // 示例行: #EXTINF:-1 tvg-id="CCTV1" tvg-name="CCTV-1" tvg-logo="CCTV1.png" group-title="央视",CCTV-1 综合
 func parseExtinfLine(line string) (name, group string, err error) {
 	// 提取 group-title

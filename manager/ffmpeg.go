@@ -68,18 +68,18 @@ func (pm *ProcessManager) StartProcess(id, inputURL, outputDir string) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %v", err)
 	}
-
-	// 构建FFmpeg命令参数
-	// 格式: ffmpeg -i [inputURL] -c:v copy -c:a aac -f hls -hls_time 4 -hls_list_size 5 -hls_flags delete_segments [outputDir]/index.m3u8
+	// 构建FFmpeg命令参数（优化为秒开配置）
+	// 格式: ffmpeg -i [inputURL] -c:v copy -c:a aac -f hls -hls_time 1 -hls_list_size 5 -hls_flags delete_segments+append_list [outputDir]/index.m3u8
 	outputPath := filepath.Join(outputDir, "index.m3u8")
 	cmd := exec.Command("ffmpeg",
 		"-i", inputURL, // 输入流URL
 		"-c:v", "copy", // 视频编码保持原样
 		"-c:a", "aac", // 音频转为AAC编码
 		"-f", "hls", // 输出格式为HLS
-		"-hls_time", "4", // 每个HLS切片时长4秒
+		"-hls_time", "1", // 每个HLS切片时长1秒（秒开优化）
 		"-hls_list_size", "5", // 播放列表最多保留5个切片
-		"-hls_flags", "delete_segments", // 自动删除过期的切片文件
+		"-hls_flags", "delete_segments+append_list", // 自动删除过期切片并启用动态列表追加
+		"-hls_init_time", "1", // 强制尽快写入初始切片列表（秒开关键参数）
 		outputPath, // 输出文件路径
 	)
 
@@ -184,8 +184,8 @@ func (pm *ProcessManager) cleanup() {
 	}
 }
 
-// GetProcessCount 获取当前活跃进程数量
-func (pm *ProcessManager) GetProcessCount() int {
+// GetActiveCount 获取当前活跃进程数量
+func (pm *ProcessManager) GetActiveCount() int {
 	pm.RLock()
 	defer pm.RUnlock()
 	return len(pm.Processes)
