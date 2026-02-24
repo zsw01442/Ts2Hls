@@ -1,71 +1,58 @@
-# TsToHls - 视频流转换工具
+# TsToHls - 直播流转码工具
 
-轻量级 M3U 视频流转换为 HLS (m3u8) 代理流服务。
+将 TS 协议直播流转换为 HLS 格式的工具，支持 M3U 频道列表管理。
 
-## 功能特性
+## 特性
 
-- M3U 播放列表解析与转换
-- FFmpeg 实时转码（视频 copy，音频转 aac）
-- 进程管理与自动清理（LRU 算法，最多 5 个并发进程）
-- 3 分钟无活动自动清理
-- 前端界面支持频道分组与播放
+- 📺 实时转码 TS 协议为 HLS
+- 🗂 M3U/M3U8 文件管理
+- 🚀 轻量高效，支持容器化部署
+- 🎨 简易Web管理界面
 
-## 快速开始
+## 推荐安装方式
 
-### 本地运行
+### Docker Compose 部署
 
+1. 创建 `docker-compose.yml` 文件：
+
+```yaml
+version: '3'
+
+services:
+  tstohls:
+    image: ghcr.io/kronus09/tstohls:latest
+    container_name: tstohls
+    restart: unless-stopped
+    ports:
+      - "15140:15140"
+    volumes:
+      - ./data/m3u:/app/data/m3u  # M3U 文件持久化存储
+    tmpfs:
+      - /app/data/hls:size=512M,mode=1777  # HLS 切片存放于内存盘 (RAM Disk)
+    environment:
+      - GIN_MODE=release
+      - TZ=Asia/Shanghai
+```
+
+2. 启动服务：
 ```bash
-go run main.go
+docker-compose up -d
 ```
 
-访问 http://localhost:15140
-
-### Docker 部署
-
-```bash
-# 构建并启动
-docker-compose up --build -d
-
-# 查看日志
-docker-compose logs -f
-
-# 停止服务
-docker-compose down
+3. 访问管理界面：
+```
+http://服务器IP:15140/web
 ```
 
-访问 http://localhost:15140
+## 配置说明
 
-## 技术栈
+- **数据持久化**：`./data/m3u` 目录存储上传的 M3U 文件
+- **临时存储**：HLS 切片使用内存盘提高性能
+- **时区**：默认 `Asia/Shanghai`，可按需修改
 
-- 后端：Go + Gin
-- 前端：HTML + Tailwind CSS + ArtPlayer
-- 转码：FFmpeg
+## 版权信息
 
-## 目录结构
+开源协议
+本项目采用 MIT License 协议。
 
-```
-TsToHls/
-├── main.go           # 主程序入口
-├── manager/          # FFmpeg 进程管理
-├── parser/          # M3U 解析器
-├── web/             # 前端页面
-├── data/            # 数据目录
-│   ├── m3u/        # 上传的 M3U 文件
-│   └── hls/        # HLS 切片文件 (tmpfs)
-├── Dockerfile       # 容器构建
-└── docker-compose.yml # 容器编排
-```
-
-## API 接口
-
-- `POST /api/upload` - 上传 M3U 文件
-- `GET /api/status` - 获取服务状态
-- `GET /stream/:id/index.m3u8` - 获取 HLS 流
-
-## 配置
-
-- 服务端口：15140
-- 最大并发进程：5
-- 进程超时：3 分钟
-- HLS 切片时长：4 秒
-- HLS 列表大小：5 个切片
+Copyright (c) 2026 kronus09.
