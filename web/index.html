@@ -33,7 +33,7 @@
         <div class="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <i data-lucide="play" class="w-8 h-8 text-indigo-600"></i>
-                <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.0.3</span></h1>
+                <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.1.1</span></h1>
             </div>
             <nav class="flex gap-8">
                 <button id="tabConsole" class="font-bold pb-2 border-b-4 border-indigo-600 text-indigo-600">系统控制</button>
@@ -101,13 +101,13 @@
         <div class="flex justify-center items-center gap-6 text-xs font-medium border-t border-slate-100 pt-10 pb-10">
             <span class="text-slate-400">Developed by <span class="text-slate-600">Gemini</span></span>
             <span class="text-slate-200">|</span>
-            <span class="text-slate-400 font-mono-jb">v1.0.3</span>
+            <span class="text-slate-400 font-mono-jb">v1.1.1</span>
         </div>
     </template>
 
     <script>
         let channels = [];
-        let currentGroup = ''; // 1. 初始设为空，等待数据加载后动态决定
+        let currentGroup = ''; 
         let artPlayer = null;
 
         function init() {
@@ -119,52 +119,35 @@
         }
 
         async function loadListFromServer() {
-            console.log("--- 列表同步启动 ---");
             try {
                 const res = await fetch('/api/list?cache_bust=' + Date.now());
-                if (!res.ok) throw new Error("服务器响应异常: " + res.status);
-                
+                if (!res.ok) throw new Error("服务器响应异常");
                 const rawData = await res.json();
-                
-                // 适配后端新出的 Channel 数组结构
-                let list = [];
-                if (Array.isArray(rawData)) {
-                    list = rawData;
-                } else if (rawData && typeof rawData === 'object') {
-                    list = rawData.channels || rawData.list || rawData.data || [];
-                }
-
+                let list = Array.isArray(rawData) ? rawData : (rawData.channels || []);
                 if (list.length > 0) {
                     channels = list;
                     updateUI(channels.length);
                     return true;
                 }
-            } catch (e) { 
-                console.error("同步失败详情:", e); 
-            }
+            } catch (e) { console.error("同步失败:", e); }
             return false;
         }
 
         function setupDragAndDrop() {
             const fileInput = document.getElementById('fileInput');
             const dropZone = document.getElementById('dropZone');
-            window.addEventListener("dragover", e => e.preventDefault(), false);
-            window.addEventListener("drop", e => e.preventDefault(), false);
             dropZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                dropZone.classList.add('border-indigo-500', 'bg-indigo-50', 'scale-[1.01]');
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
             });
             ['dragleave', 'drop'].forEach(n => {
-                dropZone.addEventListener(n, () => {
-                    dropZone.classList.remove('border-indigo-500', 'bg-indigo-50', 'scale-[1.01]');
-                });
+                dropZone.addEventListener(n, () => dropZone.classList.remove('border-indigo-500', 'bg-indigo-50'));
             });
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    fileInput.files = files;
-                    handleFileSelect(files[0].name);
+                if (e.dataTransfer.files.length > 0) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFileSelect(e.dataTransfer.files[0].name);
                 }
             });
             dropZone.onclick = () => fileInput.click();
@@ -175,7 +158,6 @@
             document.getElementById('dropZoneContent').innerHTML = `
                 <i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i>
                 <p class="text-indigo-600 font-bold">已选: ${name}</p>
-                <p class="text-xs text-slate-400 mt-2">点击下方按钮提交后端转换</p>
             `;
             lucide.createIcons();
         }
@@ -183,29 +165,17 @@
         document.getElementById('uploadBtn').onclick = async () => {
             const fileInput = document.getElementById('fileInput');
             if(!fileInput.files[0]) return fileInput.click();
-            
             const btn = document.getElementById('uploadBtn');
-            btn.textContent = "正在转换，请等待后端完成...";
-            btn.disabled = true;
-
-            const fd = new FormData();
-            fd.append('m3uFile', fileInput.files[0]);
-            
+            btn.textContent = "正在转换..."; btn.disabled = true;
+            const fd = new FormData(); fd.append('m3uFile', fileInput.files[0]);
             try {
                 const res = await fetch('/api/upload', { method: 'POST', body: fd });
                 if (res.ok) {
-                    btn.textContent = "转换完成，同步结果...";
-                    for(let i=0; i<3; i++) {
-                        await new Promise(r => setTimeout(r, 1000));
-                        const ok = await loadListFromServer();
-                        if(ok) break;
-                    }
+                    await new Promise(r => setTimeout(r, 2000));
+                    await loadListFromServer();
                 }
-            } catch (e) { 
-                alert("无法连接到服务器");
             } finally {
-                btn.textContent = "开始转换";
-                btn.disabled = false;
+                btn.textContent = "开始转换"; btn.disabled = false;
             }
         };
 
@@ -213,72 +183,48 @@
             const urlInput = document.getElementById('m3uUrl');
             urlInput.value = `${window.location.origin}/playlist/tstohls.m3u`;
             urlInput.classList.replace('text-slate-400', 'text-indigo-600');
-            urlInput.classList.add('font-bold');
-            
             document.getElementById('channelCount').textContent = count;
-            document.getElementById('previewStatusText').textContent = "就绪，请选择频道";
             renderPreview();
         }
 
         function renderPreview() {
-            if (!channels || channels.length === 0) return;
-            
-            // 2. 提取并排序实际分组
+            if (!channels.length) return;
             const groupsSet = new Set();
             channels.forEach(ch => { if(ch.group) groupsSet.add(ch.group); });
             let keys = Array.from(groupsSet).sort();
-            
-            // 3. 将“全部”强制放到最后
             keys.push('全部');
-
-            // 4. 核心逻辑：如果当前没有选组（比如刚加载），默认选中第一个组
-            if (!currentGroup && keys.length > 0) {
-                currentGroup = keys[0]; 
-            }
+            if (!currentGroup) currentGroup = keys[0];
 
             const gc = document.getElementById('groupContainer');
             gc.innerHTML = '';
             keys.forEach(g => {
                 const btn = document.createElement('button');
-                const isActive = currentGroup === g;
-                btn.className = `group-tag px-4 py-2 text-xs font-bold whitespace-nowrap ${isActive ? 'active' : 'bg-white text-slate-400'}`;
+                btn.className = `group-tag px-4 py-2 text-xs font-bold whitespace-nowrap ${currentGroup === g ? 'active' : 'bg-white text-slate-400'}`;
                 btn.textContent = g;
-                btn.onclick = () => { 
-                    currentGroup = g; 
-                    renderPreview(); 
-                };
+                btn.onclick = () => { currentGroup = g; renderPreview(); };
                 gc.appendChild(btn);
             });
 
             const grid = document.getElementById('channelGrid');
             grid.innerHTML = '';
-            
-            // 5. 过滤逻辑：匹配当前组
             const filtered = currentGroup === '全部' ? channels : channels.filter(c => c.group === currentGroup);
-            
             filtered.forEach(ch => {
                 const b = document.createElement('div');
                 b.className = 'channel-btn';
-                const logoSrc = ch.logo || 'https://cdn-icons-png.flaticon.com/512/732/732232.png';
-                b.innerHTML = `
-                    <img src="${logoSrc}" class="w-6 h-6 object-contain shrink-0" onerror="this.src='https://cdn-icons-png.flaticon.com/512/732/732232.png'">
-                    <span class="text-[11px] font-bold text-slate-700 truncate">${ch.name}</span>`;
+                b.innerHTML = `<img src="${ch.logo || ''}" class="w-6 h-6 object-contain" onerror="this.src='https://cdn-icons-png.flaticon.com/512/732/732232.png'"><span class="text-[11px] font-bold truncate">${ch.name}</span>`;
                 b.onclick = () => play(ch);
                 grid.appendChild(b);
             });
         }
 
         function play(ch) {
-            const url = `/stream/${ch.id}/index.m3u8`;
             if(artPlayer) artPlayer.destroy();
-            document.getElementById('playerContainer').innerHTML = '';
             artPlayer = new Artplayer({
-                container: '#playerContainer', url: url, isLive: true, autoplay: true, theme: '#4f46e5',
+                container: '#playerContainer', url: `/stream/${ch.id}/index.m3u8`, isLive: true, autoplay: true, theme: '#4f46e5',
                 customType: {
-                    m3u8: function(video, url) {
-                        if (Hls.isSupported()) {
-                            const hls = new Hls(); hls.loadSource(url); hls.attachMedia(video);
-                        } else { video.src = url; }
+                    m3u8: (v, u) => {
+                        if (Hls.isSupported()) { const hls = new Hls(); hls.loadSource(u); hls.attachMedia(v); }
+                        else { v.src = u; }
                     }
                 }
             });
@@ -294,40 +240,51 @@
 
         document.getElementById('tabConsole').onclick = () => switchTab('console');
         document.getElementById('tabPreview').onclick = () => switchTab('preview');
+
+        // 核心修复：兼容性复制逻辑
         document.getElementById('copyBtn').onclick = () => {
             const val = document.getElementById('m3uUrl').value;
             if (!val || val.includes("等待")) return;
-            navigator.clipboard.writeText(val);
-            const b = document.getElementById('copyBtn'); b.textContent = '已复制';
-            setTimeout(() => b.textContent = '复制', 2000);
+
+            const btn = document.getElementById('copyBtn');
+            const success = () => {
+                btn.textContent = '已复制';
+                setTimeout(() => btn.textContent = '复制', 2000);
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(val).then(success);
+            } else {
+                // 降级方案：创建一个隐藏的 textarea
+                const textArea = document.createElement("textarea");
+                textArea.value = val;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    success();
+                } catch (err) {
+                    console.error('Fallback copy failed', err);
+                }
+                document.body.removeChild(textArea);
+            }
         };
 
         async function checkStatus() {
             try {
-                // 增加随机数防止浏览器缓存结果
                 const r = await fetch('/api/status?t=' + Date.now());
-                if (!r.ok) return;
-                const d = await r.json();
-                
-                const el = document.getElementById('processCount');
-                if (el) {
-                    // 确保后端返回的 active_count 确实被更新了
-                    el.textContent = d.active_count;
-                    // 调试用：控制台输出一下
-                    // console.log("当前活跃进程:", d.active_count);
+                if (r.ok) {
+                    const d = await r.json();
+                    document.getElementById('processCount').textContent = d.active_count;
                 }
-            } catch(e) {
-                console.error("轮询状态失败:", e);
-            }
+            } catch(e) {}
         }
 
-        window.onload = () => { 
-            init(); 
-            // 立即执行一次
-            checkStatus(); 
-            // 启动定时器，建议缩短到 3 秒以便观察
-            setInterval(checkStatus, 3000); 
-        };
+        window.onload = () => { init(); checkStatus(); setInterval(checkStatus, 3000); };
     </script>
 </body>
 </html>
