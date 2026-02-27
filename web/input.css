@@ -1,0 +1,10 @@
+﻿@import "tailwindcss";
+
+/* 强制保留 JS 动态切换需要的类 */
+@layer utilities {
+    .hidden { display: none !important; }
+    .active-tab { 
+        border-bottom: 4px solid #4f46e5 !important; 
+        color: #4f46e5 !important; 
+    }
+}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -22,6 +23,15 @@ const (
 )
 
 func main() {
+	// 启动时自动编译一次，确保 CSS 是最新的
+	cmd := exec.Command("./tailwind.exe", "-i", "./web/input.css", "-o", "./web/static/style.css", "--minify")
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("⚠️ CSS编译警告: %v\n", err)
+	} else {
+		fmt.Println("✅ CSS已成功编译")
+	}
+
 	// 初始化进程管理器
 	pm = manager.NewProcessManager()
 
@@ -52,18 +62,62 @@ func main() {
 	http.HandleFunc("/api/upload", uploadHandler)
 	http.HandleFunc("/api/list", listHandler)
 	http.HandleFunc("/api/status", statusHandler)
+	// 配置管理接口 (支持获取、保存、重置)
+	http.HandleFunc("/api/config", configHandler)
 
 	// 5. 资源接口
 	http.HandleFunc("/playlist/tstohls.m3u", playlistHandler)
 	http.HandleFunc("/stream/", streamHandler)
 
 	fmt.Println("-------------------------------------------")
-	fmt.Printf("🚀 TsToHls v1.2.0 服务已启动\n")
+	fmt.Printf("🚀 TsToHls v1.2.1 服务已启动\n")
 	fmt.Printf("👉 管理界面: http://127.0.0.1:%s\n", Port)
 	fmt.Printf("👉 订阅地址: http://127.0.0.1:%s/playlist/tstohls.m3u\n", Port)
 	fmt.Println("-------------------------------------------")
 
 	log.Fatal(http.ListenAndServe(":"+Port, nil))
+}
+
+// configHandler 处理配置的获取、更新和恢复默认
+func configHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == http.MethodGet {
+		// 获取当前配置
+		json.NewEncoder(w).Encode(pm.Config)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		// 检查是否是“恢复默认值”操作
+		if r.URL.Query().Get("action") == "reset" {
+			fmt.Println("🔄 正在执行配置重置...")
+			// 删除本地配置文件
+			_ = os.Remove("m3u/config.json")
+			// 重新调用加载函数（内部会应用默认值并重建文件）
+			pm.LoadConfig()
+			w.Write([]byte(`{"status":"ok","message":"已恢复默认配置"}`))
+			return
+		}
+
+		// 常规更新配置
+		var newCfg manager.FFmpegConfig
+		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
+			http.Error(w, "无效的配置数据", 400)
+			return
+		}
+
+		// 更新内存中的配置并保存
+		pm.Config = newCfg
+		pm.SaveConfig()
+
+		fmt.Println("⚙️ 配置已通过 API 更新并保存")
+		w.Write([]byte(`{"status":"ok","message":"配置保存成功"}`))
+		return
+	}
+
+	http.Error(w, "不支持的方法", 405)
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +155,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 func listHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-	// 禁用缓存，确保每次获取最新数据
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")

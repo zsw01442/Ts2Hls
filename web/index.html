@@ -3,59 +3,206 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TsToHls - 视频流转换工具</title>
-    <link rel="icon" type="image/png" href="/static/logos/favicon.png">
-    
-    <link rel="stylesheet" href="/static/css/tailwind.min.css">
-    
+    <title>TsToHls 控制台</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link href="/static/style.css" rel="stylesheet">
+
     <script src="/static/js/lucide.min.js"></script>
-    <script src="/static/js/hls.min.js"></script>
     <script src="/static/js/artplayer.js"></script>
+    <script src="/static/js/hls.min.js"></script>
 
     <style>
-        /* 3. 使用系统默认字体代替远程 Google Fonts */
+        html { overflow-y: scroll; }
         body { 
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
             background-color: #f8fafc; 
             color: #1e293b; 
         }
         .font-mono-jb { 
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important; 
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; 
         }
         
-        /* 保持原有的核心结构样式 */
+        /* Logo 强制限制 */
+        .brand-logo { width: 40px; height: 40px; object-fit: contain; flex-shrink: 0; }
+
+        .page-container { max-width: 80rem; margin-left: auto; margin-right: auto; padding-left: 1.5rem; padding-right: 1.5rem; }
+
         .main-card { background-color: #ffffff !important; border: 1px solid #f1f5f9; border-radius: 1.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); height: 520px; overflow: hidden; display: flex; flex-direction: column; }
         .split-box { height: 50%; padding: 2.5rem 2rem; background-color: #ffffff; }
         .border-divider { border-top: 1px solid #f1f5f9; }
         .brand-text { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .unified-title { font-size: 1.125rem !important; font-weight: 700 !important; color: #1e293b !important; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem; font-family: ui-monospace, monospace !important; }
+        
+        /* 优化专家面板的紧凑感 */
+        .config-card {
+            background-color: #ffffff;
+            border: 1px solid #f1f5f9;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+            padding: 1rem 1.5rem;
+        }
+        
+        /* 专家面板行对齐 */
+        .config-row { 
+            display: flex; 
+            align-items: center; 
+            padding: 6px 0; 
+            border-bottom: 1px solid #f8fafc; 
+        }
+        
+        /* 1. 标签：固定宽度 */
+        .config-label { 
+            width: 90px; 
+            font-size: 0.75rem; 
+            font-weight: 700; 
+            color: #475569; 
+            flex-shrink: 0; 
+        }
+        
+        /* 2. 下拉框：通过 margin-left 和前面的文字空开，并固定宽度 */
+        .config-select { 
+            width: 120px;          /* 略微放宽，确保文本显示完整 */
+            margin-left: 1.5rem;    /* 与左侧标题空开距离 */
+            height: 26px; 
+            padding: 0 0.4rem; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 0.375rem; 
+            font-family: ui-monospace; 
+            font-size: 0.75rem; 
+            font-weight: 700; 
+            color: #4f46e5;
+            background-color: #fff;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .config-select:disabled { 
+            background-color: transparent; 
+            border-color: transparent; 
+            cursor: default;
+            appearance: none; /* 隐藏下拉箭头 */
+            -webkit-appearance: none;
+        }
+        
+        /* 3. 提示信息：占据剩余空间，设置左间距 */
+        .config-hint { 
+            margin-left: 1rem;
+            font-size: 0.7rem; 
+            color: #94a3b8; 
+            white-space: nowrap; 
+            overflow: hidden;
+            text-overflow: ellipsis; /* 如果太长则显示省略号 */
+        }
+        
+        /* 专家模式开启时，增加一个微妙的背景色区分 */
+        .is-expert-active .config-row {
+            background-color: #fcfcff;
+        }
+        
+        /* 缩小面板标题后的间距 */
+        .config-card .unified-title {
+            margin-bottom: 0.5rem !important;
+        }
+
         .player-wrapper { background-color: #000; border-radius: 0.4rem; overflow: hidden; aspect-ratio: 16 / 9; position: relative; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); border: none; }
         #playerContainer { width: 100%; height: 100%; }
-        .channel-btn { transition: all 0.2s ease; border: 1px solid #f1f5f9; border-radius: 0.5rem; background: white; padding: 0.6rem; display: flex; align-items: center; gap: 0.6rem; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.03); cursor: pointer; }
+
+        /* 1. 频道网格：平衡自动布局 */
+        #channelGrid { 
+            display: grid;
+            /* 最小宽度增加到 120px，确保文字有呼吸空间 */
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+            gap: 0.5rem; /* 间距稍微拉开一点点 */
+            margin-bottom: 2rem;
+            width: 100%;
+        }
+
+        /* 2. 频道按钮：适度加大 */
+        .channel-btn { 
+            transition: all 0.2s ease; 
+            border: 1px solid #f1f5f9; 
+            border-radius: 0.5rem; /* 圆角恢复一点，更圆润 */
+            background: white; 
+            padding: 0.4rem 0.6rem; /* 稍微增加内边距 */
+            display: flex; 
+            align-items: center; 
+            gap: 0.5rem; 
+            text-align: left; 
+            cursor: pointer;
+            min-width: 0;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
         .channel-btn:hover { border-color: #4f46e5; transform: translateY(-1px); background: #f5f3ff; }
-        .group-tag { transition: all 0.2s; border: 1px solid #e2e8f0; border-radius: 0.75rem; cursor: pointer; }
+
+        /* 3. 频道图标：稍微加大 */
+        .channel-btn img {
+            width: 18px !important;
+            height: 18px !important;
+            flex-shrink: 0;
+        }
+
+        /* 4. 频道文字：标准紧凑字号 */
+        .channel-btn span {
+            font-size: 0.8125rem !important; /* 略微提升字号 */
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 5. 分组标签同步稍微加大 */
+        .group-tag { 
+            padding: 0.25rem 0.75rem !important;
+            font-size: 0.75rem !important;
+            border-radius: 0.6rem !important;
+            white-space: nowrap;
+            transition: all 0.2s; 
+            border: 1px solid #e2e8f0; 
+            cursor: pointer; 
+        }
         .group-tag.active { background-color: #4f46e5; color: white; border-color: #4f46e5; }
+
         .no-scrollbar::-webkit-scrollbar { display: none; }
         #dropZone * { pointer-events: none; }
+        
+        /* 针对顶部导航按钮的预设，防止刷新闪烁 */
+        nav button {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem; /* 预设固定字号 */
+            padding: 0;
+            margin: 0;
+            line-height: 1.5;
+            height: 32px; /* 强制高度 */
+            box-sizing: border-box;
+        }
+        
+        /* 避免按钮点击时的蓝色外框 */
+        button:focus { outline: none; }
+        
+        /* 统一版权样式 */
+        .footer-static { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; border-top: 1px solid #f1f5f9; pt: 2.5rem; pb: 2.5rem; margin-top: 3rem; padding-top: 2.5rem; padding-bottom: 2.5rem; width: 100%; }
     </style>
 </head>
 <body class="min-h-screen">
     <header class="bg-white border-b border-slate-100">
-        <div class="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
+        <div class="page-container py-6 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <i data-lucide="play" class="w-8 h-8 text-indigo-600"></i>
+                <img src="/static/logo.png" class="brand-logo" alt="Logo" onerror="this.src='/static/logos/favicon.png'">
                 <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.2.0</span></h1>
             </div>
-            <nav class="flex gap-8">
-                <button id="tabConsole" class="font-bold pb-2 border-b-4 border-indigo-600 text-indigo-600">系统控制</button>
-                <button id="tabPreview" class="font-bold pb-2 border-b-4 border-transparent text-slate-400">直播预览</button>
+            <nav class="flex gap-8 h-10 items-end">
+                <button id="tabConsole" class="font-bold pb-1 border-b-4 border-indigo-600 text-indigo-600 transition-all leading-none">系统控制</button>
+                <button id="tabPreview" class="font-bold pb-1 border-b-4 border-transparent text-slate-400 transition-all leading-none">直播预览</button>
             </nav>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-6 py-10">
+    <main class="page-container py-10">
         <div id="consolePage">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <div class="main-card p-8">
                     <h2 class="unified-title"><i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-500"></i>上传 M3U 文件</h2>
                     <div id="dropZone" class="flex-grow flex flex-col justify-center items-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer transition-all duration-300">
@@ -91,11 +238,132 @@
                     </div>
                 </div>
             </div>
-            <footer class="footer-target"></footer>
+
+            <div class="config-card">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="unified-title mb-0"><i data-lucide="sliders" class="w-5 h-5 text-indigo-500"></i>FFMPEG 专家控制面板</h2>
+                    <button id="expertModeBtn" class="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100">编辑配置</button>
+                </div>
+                <form id="configForm" class="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-1">
+                    <div class="config-row">
+                        <span class="config-label">最大并发数</span>
+                        <select name="max_processes" class="config-select" disabled>
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                            <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                        </select>
+                        <span class="config-hint">限制后台转码进程总数，保护 CPU 负载</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">切片时长 (s)</span>
+                        <select name="hls_time" class="config-select" disabled>
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                            <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                        </select>
+                        <span class="config-hint">每个 ts 文件的长度，值越小起播越快</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">切片数量</span>
+                        <select name="hls_list_size" class="config-select" disabled>
+                            <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                            <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+                            <option value="9">9</option>
+                        </select>
+                        <span class="config-hint">m3u8 索引中保留的切片数，影响回退深度</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">闲置超时 (s)</span>
+                        <select name="idle_timeout" class="config-select" disabled>
+                            <option value="60">60</option><option value="120">120</option><option value="300">300</option>
+                            <option value="600">600</option><option value="1800">1800</option><option value="3600">3600</option>
+                        </select>
+                        <span class="config-hint">无人观看后释放 ffmpeg 进程的等待时间</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">视频编码</span>
+                        <select name="video_codec" class="config-select" disabled>
+                            <option value="copy">copy</option>
+                            <option value="libx264">libx264</option>
+                            <option value="libx265">libx265</option>
+                        </select>
+                        <span class="config-hint">copy 为原画直转；x264 兼容性最强但耗能</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">音频编码</span>
+                        <select name="audio_codec" class="config-select" disabled>
+                            <option value="aac">aac</option>
+                            <option value="mp3">mp3</option>
+                            <option value="copy">copy</option>
+                        </select>
+                        <span class="config-hint">设置音频流格式，aac 是移动端通用标准</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">音频码率</span>
+                        <select name="audio_bitrate" class="config-select" disabled>
+                            <option value="64k">64k</option><option value="128k">128k</option>
+                            <option value="192k">192k</option><option value="256k">256k</option>
+                        </select>
+                        <span class="config-hint">音频传输质量，128k 为标准 CD 级音质</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">重连延迟 (s)</span>
+                        <select name="reconnect_delay" class="config-select" disabled>
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                            <option value="5">5</option><option value="10">10</option>
+                        </select>
+                        <span class="config-hint">源流中断后，重新拉取流的间隔缓冲时间</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">切片格式</span>
+                        <select name="hls_segment_type" class="config-select" disabled>
+                            <option value="mpegts">mpegts (ts)</option>
+                            <option value="fmp4">fmp4 (cmfv)</option>
+                        </select>
+                        <span class="config-hint">ts 兼容性极佳；fmp4 针对现代协议优化</span>
+                    </div>
+
+                    <div class="config-row">
+                        <span class="config-label">传输策略</span>
+                        <select name="hls_flags" class="config-select" disabled>
+                            <option value="delete_segments">基础模式</option>
+                            <option value="delete_segments+discont_start+independent_segments">极致兼容</option>
+                        </select>
+                        <span class="config-hint">控制 HLS 协议标志，影响不同播放器兼容性</span>
+                    </div>
+                </form>
+                <div id="configActions" class="mt-6 flex gap-3 hidden">
+                    <button id="resetConfigBtn" class="px-6 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200">恢复默认</button>
+                    <button id="saveConfigBtn" class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-md">应用修改</button>
+                </div>
+            </div>
+
+            <div class="footer-static">
+                <div class="flex items-center justify-center gap-2">
+                    <span class="text-slate-400 flex items-center">
+                        Developed by 
+                        <a href="https://github.com/kronus09/TsToHls" target="_blank" 
+                           class="flex items-center gap-1.5 ml-1.5 text-slate-600 hover:text-indigo-600 transition-all font-bold group">
+                            <span>kronus09</span>
+                            <i data-lucide="github" class="w-4 h-4"></i>
+                        </a>
+                    </span>
+                    <span class="text-slate-200">|</span>
+                    <span class="text-slate-400 font-mono-jb uppercase text-[10px]">Local Instance | &copy; 2026 TSTOHLS v1.2.0</span>
+                </div>
+            </div>
         </div>
 
         <div id="previewPage" class="hidden">
-            <div class="max-w-6xl mx-auto">
+            <div class="w-full">
                 <div class="player-wrapper mb-8">
                     <div id="playerContainer" class="w-full h-full flex items-center justify-center text-slate-400 font-bold">
                         <p id="previewStatusText">数据同步中...</p>
@@ -104,26 +372,23 @@
                 <div id="groupContainer" class="mb-6 flex gap-2 overflow-x-auto no-scrollbar pb-2"></div>
                 <div id="channelGrid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-12"></div>
             </div>
-            <footer class="footer-target"></footer>
-        </div>
-    </main>
-
-    <template id="footerTemplate">
-        <div class="flex flex-col justify-center items-center gap-2 text-xs font-medium border-t border-slate-100 pt-10 pb-10">
-            <div class="flex items-center gap-2">
-                <span class="text-slate-400 flex items-center">
-                    Developed by 
-                    <a href="https://github.com/kronus09/TsToHls" target="_blank" 
-                       class="flex items-center gap-1.5 ml-1.5 text-slate-600 hover:text-indigo-600 transition-all font-bold group">
-                        <span>kronus09</span>
-                        <i data-lucide="github" class="w-4 h-4 fill-current border-none"></i>
-                    </a>
-                </span>
-                <span class="text-slate-200">|</span>
-                <span class="text-slate-400 font-mono-jb">v1.2.0</span>
+            
+            <div class="footer-static">
+                <div class="flex items-center justify-center gap-2">
+                    <span class="text-slate-400 flex items-center">
+                        Developed by 
+                        <a href="https://github.com/kronus09/TsToHls" target="_blank" 
+                           class="flex items-center gap-1.5 ml-1.5 text-slate-600 hover:text-indigo-600 transition-all font-bold group">
+                            <span>kronus09</span>
+                            <i data-lucide="github" class="w-4 h-4"></i>
+                        </a>
+                    </span>
+                    <span class="text-slate-200">|</span>
+                    <span class="text-slate-400 font-mono-jb uppercase text-[10px]">Local Instance | &copy; 2026 TSTOHLS v1.2.0</span>
+                </div>
             </div>
         </div>
-    </template>
+    </main>
 
     <script src="/static/js/app.js"></script>
 </body>
