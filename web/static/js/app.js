@@ -1,7 +1,7 @@
 /**
  * TsToHls Dashboard Core Logic
  * Version: 1.2.2
- * Optimized for local deployment and fixed drag-and-drop bug.
+ * Optimized for local deployment, fixed drag-and-drop bug and clipboard compatibility.
  */
 
 let channels = [];
@@ -278,10 +278,39 @@ function setupDragAndDrop() {
     };
 }
 
+// 核心修复: 兼容 HTTP/HTTPS/IP 访问的复制逻辑
 document.getElementById('copyBtn').onclick = () => {
     const url = document.getElementById('m3uUrl').value;
-    navigator.clipboard.writeText(url).then(() => {
-        const btn = document.getElementById('copyBtn');
+    const btn = document.getElementById('copyBtn');
+
+    const copyToClipboard = (text) => {
+        // 如果是 HTTPS 或 localhost，使用现代 API
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        } else {
+            // 否则使用隐藏 Textarea 方案兼容 IP 直接访问
+            return new Promise((resolve, reject) => {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    successful ? resolve() : reject();
+                } catch (err) {
+                    document.body.removeChild(textArea);
+                    reject(err);
+                }
+            });
+        }
+    };
+
+    copyToClipboard(url).then(() => {
         const oldText = btn.textContent;
         btn.textContent = "已复制";
         btn.classList.replace('bg-slate-900', 'bg-emerald-600');
@@ -289,6 +318,8 @@ document.getElementById('copyBtn').onclick = () => {
             btn.textContent = oldText;
             btn.classList.replace('bg-emerald-600', 'bg-slate-900');
         }, 2000);
+    }).catch(err => {
+        console.error('复制失败:', err);
     });
 };
 
