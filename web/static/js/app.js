@@ -1,6 +1,6 @@
 /**
  * Ts2Hls Dashboard Core Logic
- * Version: 1.3.0
+ * Version: 1.3.1
  */
 
 let channels = [];
@@ -9,7 +9,8 @@ let art = null;
 let isExpertMode = false;
 
 const PLAYLIST_PATH = "/playlist/ts2hls.m3u";
-const DEFAULT_PLAYER_HINT = "请选择频道";
+const DEFAULT_PLAYER_HINT = "Please select a channel";
+const ALL_GROUP = "ALL";
 
 const init = () => {
     if (window.lucide) {
@@ -58,11 +59,11 @@ const renderPreview = () => {
     if (!gc || !grid) return;
 
     const groups = [...new Set(channels.map((c) => c.group).filter(Boolean))];
-    if (!currentGroup || (currentGroup !== "全部" && !groups.includes(currentGroup))) {
-        currentGroup = groups[0] || "全部";
+    if (!currentGroup || (currentGroup !== ALL_GROUP && !groups.includes(currentGroup))) {
+        currentGroup = groups[0] || ALL_GROUP;
     }
 
-    const displayGroups = [...groups, "全部"];
+    const displayGroups = [...groups, ALL_GROUP];
     gc.innerHTML = "";
     displayGroups.forEach((g) => {
         const btn = document.createElement("button");
@@ -76,13 +77,13 @@ const renderPreview = () => {
     });
 
     grid.innerHTML = "";
-    const filtered = currentGroup === "全部" ? channels : channels.filter((c) => c.group === currentGroup);
+    const filtered = currentGroup === ALL_GROUP ? channels : channels.filter((c) => c.group === currentGroup);
     filtered.forEach((ch) => {
         const b = document.createElement("div");
         b.className = "channel-btn";
         b.innerHTML = `
             <img src="${ch.logo || "/static/logo.png"}" onerror="this.src='/static/logo.png'" alt="">
-            <span>${ch.name || "未命名频道"}</span>
+            <span>${ch.name || "Unnamed Channel"}</span>
         `;
         b.onclick = () => playStream(ch);
         grid.appendChild(b);
@@ -101,9 +102,7 @@ const stopPreview = (showPlaceholder = true) => {
             if (art.__hls && typeof art.__hls.destroy === "function") {
                 art.__hls.destroy();
             }
-        } catch (e) {
-            console.warn("destroy hls failed", e);
-        }
+        } catch (_) {}
 
         try {
             const video = art.video;
@@ -112,15 +111,11 @@ const stopPreview = (showPlaceholder = true) => {
                 video.removeAttribute("src");
                 video.load();
             }
-        } catch (e) {
-            console.warn("stop video failed", e);
-        }
+        } catch (_) {}
 
         try {
             art.destroy(true);
-        } catch (e) {
-            console.warn("destroy player failed", e);
-        }
+        } catch (_) {}
         art = null;
     }
 
@@ -174,9 +169,7 @@ async function loadListFromServer() {
         if (m3uUrl) m3uUrl.value = `${window.location.origin}${PLAYLIST_PATH}`;
 
         renderPreview();
-    } catch (e) {
-        console.error("加载频道列表失败", e);
-    }
+    } catch (_) {}
 }
 
 async function checkStatus() {
@@ -189,9 +182,7 @@ async function checkStatus() {
         if (processCount) processCount.textContent = d.active_count || 0;
         if (cpuUsage) cpuUsage.textContent = d.cpu || "0";
         if (memUsage) memUsage.textContent = d.mem || "0";
-    } catch (e) {
-        console.warn("获取状态失败", e);
-    }
+    } catch (_) {}
 }
 
 async function loadConfigFromServer() {
@@ -210,9 +201,7 @@ async function loadConfigFromServer() {
             }
             el.value = val;
         });
-    } catch (e) {
-        console.error("加载配置失败", e);
-    }
+    } catch (_) {}
 }
 
 function setupConfigActions() {
@@ -231,7 +220,7 @@ function setupConfigActions() {
         });
 
         configActions.classList.toggle("hidden", !isExpertMode);
-        expertModeBtn.textContent = isExpertMode ? "取消修改" : "编辑配置";
+        expertModeBtn.textContent = isExpertMode ? "Cancel Edit" : "Edit Config";
     };
 
     saveConfigBtn.onclick = async () => {
@@ -249,17 +238,17 @@ function setupConfigActions() {
                 body: JSON.stringify(data),
             });
             if (!res.ok) {
-                throw new Error("保存失败");
+                throw new Error("save failed");
             }
-            alert("配置已更新");
+            alert("Config updated");
             location.reload();
-        } catch (e) {
-            alert("保存失败");
+        } catch (_) {
+            alert("Save failed");
         }
     };
 
     resetConfigBtn.onclick = async () => {
-        if (!confirm("确定恢复默认配置吗？")) return;
+        if (!confirm("Reset config to defaults?")) return;
         await fetch("/api/config?action=reset", { method: "POST" });
         location.reload();
     };
@@ -302,19 +291,19 @@ function setupDragAndDrop() {
         if (!content) return;
         content.innerHTML = `
             <i data-lucide="check-circle" class="w-10 h-10 text-emerald-500 mx-auto mb-4"></i>
-            <p class="text-xs font-bold text-indigo-600">已选择: ${file.name}</p>
+            <p class="text-xs font-bold text-indigo-600">Selected: ${file.name}</p>
         `;
         if (window.lucide) lucide.createIcons();
     }
 
     uploadBtn.onclick = async () => {
         if (!input.files || !input.files[0]) {
-            alert("请先选择 M3U 文件");
+            alert("Please select an M3U file first");
             return;
         }
 
         uploadBtn.disabled = true;
-        uploadBtn.textContent = "处理中...";
+        uploadBtn.textContent = "Processing...";
 
         const fd = new FormData();
         fd.append("m3uFile", input.files[0]);
@@ -323,18 +312,18 @@ function setupDragAndDrop() {
             const res = await fetch("/api/upload", { method: "POST", body: fd });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "上传失败");
+                throw new Error(msg || "upload failed");
             }
 
             const data = await res.json();
-            alert(`导入成功，解析 ${data.count || 0} 路频道`);
+            alert(`Import success, parsed ${data.count || 0} channels`);
             await loadListFromServer();
             input.value = "";
         } catch (e) {
-            alert(`上传失败: ${e.message || "请求错误"}`);
+            alert(`Upload failed: ${e.message || "request error"}`);
         } finally {
             uploadBtn.disabled = false;
-            uploadBtn.textContent = "上传并转换";
+            uploadBtn.textContent = "Upload and Convert";
         }
     };
 }
@@ -347,13 +336,13 @@ function setupUrlImport() {
     const submit = async () => {
         const value = (urlInput.value || "").trim();
         if (!/^https?:\/\//i.test(value)) {
-            alert("请输入有效的 http/https M3U 链接");
+            alert("Please input a valid http/https M3U URL");
             return;
         }
 
         uploadUrlBtn.disabled = true;
         const oldText = uploadUrlBtn.textContent;
-        uploadUrlBtn.textContent = "导入中...";
+        uploadUrlBtn.textContent = "Importing...";
 
         try {
             const res = await fetch("/api/upload/url", {
@@ -363,15 +352,15 @@ function setupUrlImport() {
             });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "导入失败");
+                throw new Error(msg || "import failed");
             }
 
             const data = await res.json();
-            alert(`导入成功，解析 ${data.count || 0} 路频道`);
+            alert(`Import success, parsed ${data.count || 0} channels`);
             urlInput.value = "";
             await loadListFromServer();
         } catch (e) {
-            alert(`链接导入失败: ${e.message || "请求错误"}`);
+            alert(`URL import failed: ${e.message || "request error"}`);
         } finally {
             uploadUrlBtn.disabled = false;
             uploadUrlBtn.textContent = oldText;
@@ -421,15 +410,13 @@ function setupCopyButton() {
         const url = m3uUrl.value || "";
         copyToClipboard(url).then(() => {
             const oldText = copyBtn.textContent;
-            copyBtn.textContent = "已复制";
+            copyBtn.textContent = "Copied";
             copyBtn.classList.replace("bg-slate-900", "bg-emerald-600");
             setTimeout(() => {
                 copyBtn.textContent = oldText;
                 copyBtn.classList.replace("bg-emerald-600", "bg-slate-900");
             }, 2000);
-        }).catch((err) => {
-            console.error("复制失败:", err);
-        });
+        }).catch(() => {});
     };
 }
 

@@ -37,7 +37,7 @@
                 <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
                     <img src="/static/logo.png" class="w-6 h-6 object-contain" alt="Logo">
                 </div>
-                <h1 class="text-xl md:text-2xl font-black tracking-tight">Ts2Hls <span class="text-indigo-600 text-sm font-mono ml-1">v1.3.0</span></h1>
+                <h1 class="text-xl md:text-2xl font-black tracking-tight">Ts2Hls <span class="text-indigo-600 text-sm font-mono ml-1">v1.3.1</span></h1>
             </div>
             <div class="flex w-full md:w-64 bg-slate-100 p-1 rounded-xl shadow-inner">
                 <button id="tabConsole" class="tab-btn active">系统控制</button>
@@ -68,7 +68,7 @@
             <div class="grid grid-cols-1 lg:grid-cols-10 gap-6">
                 <div class="lg:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-100 flex flex-col">
                     <h3 class="font-bold mb-4 flex items-center gap-2 text-sm uppercase text-slate-600 tracking-wider"><i data-lucide="file-up" class="text-indigo-500 w-4"></i>数据导入</h3>
-                    <div id="dropZone" class="flex-1 min-h-[160px] border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center hover:bg-indigo-50 cursor-pointer transition-colors text-center">
+                    <div id="dropZone" class="h-[116px] min-h-[116px] border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center hover:bg-indigo-50 cursor-pointer transition-colors text-center">
                         <div id="dropZoneContent">
                             <i data-lucide="file-plus" class="w-10 h-10 text-slate-300 mx-auto mb-4"></i>
                             <p class="text-xs font-bold text-slate-400">点击或拖拽 M3U 文件</p>
@@ -78,8 +78,8 @@
                     <button id="uploadBtn" class="w-full mt-6 bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg active:scale-95 transition-all">上传并转换</button>
 
                     <div class="import-separator">OR</div>
-                    <input id="m3uUrlInput" type="text" class="w-full bg-slate-50 border border-slate-100 text-slate-600 text-sm rounded-xl px-4 py-3" placeholder="粘贴 M3U 订阅链接 (http/https)">
-                    <button id="uploadUrlBtn" class="w-full mt-3 bg-emerald-600 text-white font-black py-3 rounded-xl shadow-lg active:scale-95 transition-all">从链接导入</button>
+                    <input id="m3uUrlInput" type="text" class="w-full bg-slate-50 border border-slate-100 text-slate-600 text-sm rounded-xl px-4 py-4" placeholder="粘贴 M3U 订阅链接 (http/https)">
+                    <button id="uploadUrlBtn" class="w-full mt-3 bg-emerald-600 text-white font-black py-4 rounded-xl shadow-lg active:scale-95 transition-all">从链接导入</button>
                 </div>
 
                 <div class="lg:col-span-6 bg-white rounded-[2.5rem] p-8 border border-slate-100 flex flex-col">
@@ -92,6 +92,16 @@
                         该地址包含所有已转换的 HLS 频道流，可在主流播放器中直接使用。<br>
                         你也可以在“直播预览”中快速验证播放效果。
                     </p>
+                    <div class="mt-auto pt-8 grid grid-cols-2 gap-4">
+                        <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                            <p class="text-[9px] font-black text-slate-400 uppercase mb-2">桌面端建议</p>
+                            <div class="flex items-center gap-3 text-slate-600 font-bold text-[11px]"><i data-lucide="monitor" class="w-4 text-indigo-400"></i> PotPlayer / VLC / IINA</div>
+                        </div>
+                        <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                            <p class="text-[9px] font-black text-slate-400 uppercase mb-2">移动端建议</p>
+                            <div class="flex items-center gap-3 text-slate-600 font-bold text-[11px]"><i data-lucide="smartphone" class="w-4 text-emerald-400"></i> nPlayer / Fileball / APM</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -207,7 +217,7 @@
                 <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] group-hover:text-indigo-600 transition-colors">Open Source Project</p>
                 <i data-lucide="github" class="w-4 h-4 text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </a>
-            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TS2HLS v1.3.0</div>
+            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TS2HLS v1.3.1</div>
         </footer>
     </div>
     <script src="/static/js/app.js"></script>
