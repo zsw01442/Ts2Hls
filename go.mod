@@ -1,4 +1,4 @@
-module tstohls
+module ts2hls
 
 go 1.22.0
 

@@ -14,7 +14,7 @@ COPY go.mod go.sum* ./
 RUN if [ -f go.sum ]; then go mod download; fi
 
 COPY . .
-RUN go build -o tstohls .
+RUN go build -o ts2hls .
 
 # ===========================================
 # 第二阶段：运行镜像
@@ -30,7 +30,7 @@ ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 # 拷贝构建好的二进制文件
-COPY --from=builder /app/tstohls .
+COPY --from=builder /app/ts2hls .
 # 拷贝静态资源
 COPY --from=builder /app/web ./web
 
@@ -43,4 +43,4 @@ RUN mkdir -p ./m3u/logos ./hls_temp && chmod -R 777 ./m3u ./hls_temp
 EXPOSE 15140
 
 # 启动命令
-CMD ["./tstohls"]
+CMD ["./ts2hls"]

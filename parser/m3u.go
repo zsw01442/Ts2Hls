@@ -194,7 +194,7 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 	})
 
 	// 1. 生成订阅 m3u (这里保持使用原始远程 Logo 地址)
-	m3uPath := filepath.Join(outputDir, "tstohls.m3u")
+	m3uPath := filepath.Join(outputDir, "ts2hls.m3u")
 	mFile, _ := os.Create(m3uPath)
 	defer mFile.Close()
 	mFile.WriteString("#EXTM3U\n")

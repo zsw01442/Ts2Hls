@@ -1,66 +1,45 @@
-# TsToHls - 直播流转码工具
+# Ts2Hls - 直播流转码工具
 
-将 TS 协议直播流转换为 HLS 格式的工具，让家里的iptv可在浏览器内播放，支持输出 M3U 频道订阅，使用OmniBox等项目播放更顺畅。
+将 TS 协议直播流转换为 HLS 格式，支持生成 M3U 订阅地址，并提供可视化 Web 管理界面。
 
-## 特性
+## 主要功能
 
-- 📺 实时转码 TS 协议为 HLS（配合组播转单播软使用，仅保留h264的ts流切片为hls流，音频转码为acc）
-- 🗂 M3U/M3U8 文件管理
-- 🚀 轻量高效（只转音频，系统负载低），支持容器化部署
-- 🎨 简易Web管理界面，可用页面直接播放预览
+- TS 直播流转 HLS，按需拉流，降低资源占用
+- M3U 文件导入（本地上传/拖拽）
+- M3U 订阅链接导入（HTTP/HTTPS）
+- Web 端直播预览与播放控制（含停止预览）
+- 输出统一订阅文件：`/playlist/ts2hls.m3u`
 
-## 推荐安装方式
-
-### Docker Compose 部署
-
-1. 创建 `docker-compose.yml` 文件：
+## Docker Compose 示例
 
 ```yaml
-
 services:
-  tstohls:
-    image: ghcr.io/kronus09/tstohls:latest
-    container_name: tstohls
+  ts2hls:
+    image: zsw01442/ts2hls:latest
+    container_name: ts2hls
     restart: unless-stopped
     ports:
       - "15140:15140"
     volumes:
       - ./m3u:/app/m3u
-      # 如果你需要手动上传原始 iptv.m3u 到容器，也可以映射整个根目录或特定文件
-      # - ./iptv.m3u:/app/iptv.m3u
     tmpfs:
-      # 将切片目录 hls_temp 挂载到内存中
-      # size=512M 足以支撑 10-20 个频道同时点播（每个频道切片约占用 20-30MB）
       - /app/hls_temp:size=512M,mode=1777,exec
     environment:
-      - GIN_MODE=release
       - TZ=Asia/Shanghai
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 ```
 
-2. 启动服务：
+启动：
+
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-3. 访问管理界面：
+访问管理界面：
+
+```text
+http://<服务器IP>:15140
 ```
-http://服务器IP:15140
-```
 
-## 配置说明
+## 版本
 
-- **数据持久化**：`./data/m3u` 目录存储上传的 M3U 文件
-- **临时存储**：HLS 切片使用内存盘提高性能
-- **时区**：默认 `Asia/Shanghai`，可按需修改
-
-## 版权信息
-
-开源协议
-本项目采用 MIT License 协议。
-
-Copyright (c) 2026 kronus09.
+当前版本：`1.3.0`

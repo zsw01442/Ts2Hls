@@ -1,7 +1,7 @@
 services:
-  tstohls:
-    image: ghcr.io/kronus09/tstohls:latest
-    container_name: tstohls
+  ts2hls:
+    image: zsw01442/ts2hls:latest
+    container_name: ts2hls
     restart: unless-stopped
     ports:
       - "15140:15140"
