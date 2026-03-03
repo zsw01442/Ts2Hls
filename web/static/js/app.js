@@ -1,6 +1,6 @@
 /**
  * Ts2Hls Dashboard Core Logic
- * Version: 1.3.1
+ * Version: 1.3.2
  */
 
 let channels = [];
@@ -9,8 +9,8 @@ let art = null;
 let isExpertMode = false;
 
 const PLAYLIST_PATH = "/playlist/ts2hls.m3u";
-const DEFAULT_PLAYER_HINT = "Please select a channel";
-const ALL_GROUP = "ALL";
+const DEFAULT_PLAYER_HINT = "请选择频道";
+const ALL_GROUP = "全部";
 
 const init = () => {
     if (window.lucide) {
@@ -83,7 +83,7 @@ const renderPreview = () => {
         b.className = "channel-btn";
         b.innerHTML = `
             <img src="${ch.logo || "/static/logo.png"}" onerror="this.src='/static/logo.png'" alt="">
-            <span>${ch.name || "Unnamed Channel"}</span>
+            <span>${ch.name || "未命名频道"}</span>
         `;
         b.onclick = () => playStream(ch);
         grid.appendChild(b);
@@ -220,7 +220,7 @@ function setupConfigActions() {
         });
 
         configActions.classList.toggle("hidden", !isExpertMode);
-        expertModeBtn.textContent = isExpertMode ? "Cancel Edit" : "Edit Config";
+        expertModeBtn.textContent = isExpertMode ? "取消修改" : "编辑配置";
     };
 
     saveConfigBtn.onclick = async () => {
@@ -238,17 +238,17 @@ function setupConfigActions() {
                 body: JSON.stringify(data),
             });
             if (!res.ok) {
-                throw new Error("save failed");
+                throw new Error("保存失败");
             }
-            alert("Config updated");
+            alert("配置已更新");
             location.reload();
         } catch (_) {
-            alert("Save failed");
+            alert("保存失败");
         }
     };
 
     resetConfigBtn.onclick = async () => {
-        if (!confirm("Reset config to defaults?")) return;
+        if (!confirm("确定要恢复默认配置吗？")) return;
         await fetch("/api/config?action=reset", { method: "POST" });
         location.reload();
     };
@@ -291,19 +291,19 @@ function setupDragAndDrop() {
         if (!content) return;
         content.innerHTML = `
             <i data-lucide="check-circle" class="w-10 h-10 text-emerald-500 mx-auto mb-4"></i>
-            <p class="text-xs font-bold text-indigo-600">Selected: ${file.name}</p>
+            <p class="text-xs font-bold text-indigo-600">已选择: ${file.name}</p>
         `;
         if (window.lucide) lucide.createIcons();
     }
 
     uploadBtn.onclick = async () => {
         if (!input.files || !input.files[0]) {
-            alert("Please select an M3U file first");
+            alert("请先选择 M3U 文件");
             return;
         }
 
         uploadBtn.disabled = true;
-        uploadBtn.textContent = "Processing...";
+        uploadBtn.textContent = "正在处理...";
 
         const fd = new FormData();
         fd.append("m3uFile", input.files[0]);
@@ -312,18 +312,18 @@ function setupDragAndDrop() {
             const res = await fetch("/api/upload", { method: "POST", body: fd });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "upload failed");
+                throw new Error(msg || "上传失败");
             }
 
             const data = await res.json();
-            alert(`Import success, parsed ${data.count || 0} channels`);
+            alert(`导入成功，已解析 ${data.count || 0} 路频道`);
             await loadListFromServer();
             input.value = "";
         } catch (e) {
-            alert(`Upload failed: ${e.message || "request error"}`);
+            alert(`上传失败：${e.message || "请求出错"}`);
         } finally {
             uploadBtn.disabled = false;
-            uploadBtn.textContent = "Upload and Convert";
+            uploadBtn.textContent = "上传并转换";
         }
     };
 }
@@ -336,13 +336,13 @@ function setupUrlImport() {
     const submit = async () => {
         const value = (urlInput.value || "").trim();
         if (!/^https?:\/\//i.test(value)) {
-            alert("Please input a valid http/https M3U URL");
+            alert("请输入有效的 http/https M3U 订阅链接");
             return;
         }
 
         uploadUrlBtn.disabled = true;
         const oldText = uploadUrlBtn.textContent;
-        uploadUrlBtn.textContent = "Importing...";
+        uploadUrlBtn.textContent = "正在处理...";
 
         try {
             const res = await fetch("/api/upload/url", {
@@ -352,15 +352,15 @@ function setupUrlImport() {
             });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "import failed");
+                throw new Error(msg || "导入失败");
             }
 
             const data = await res.json();
-            alert(`Import success, parsed ${data.count || 0} channels`);
+            alert(`导入成功，已解析 ${data.count || 0} 路频道`);
             urlInput.value = "";
             await loadListFromServer();
         } catch (e) {
-            alert(`URL import failed: ${e.message || "request error"}`);
+            alert(`链接导入失败：${e.message || "请求出错"}`);
         } finally {
             uploadUrlBtn.disabled = false;
             uploadUrlBtn.textContent = oldText;
@@ -410,7 +410,7 @@ function setupCopyButton() {
         const url = m3uUrl.value || "";
         copyToClipboard(url).then(() => {
             const oldText = copyBtn.textContent;
-            copyBtn.textContent = "Copied";
+            copyBtn.textContent = "已复制";
             copyBtn.classList.replace("bg-slate-900", "bg-emerald-600");
             setTimeout(() => {
                 copyBtn.textContent = oldText;

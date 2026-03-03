@@ -25,7 +25,7 @@ const (
 	Port         = "15140"
 	TempDir      = "hls_temp"
 	AppName      = "Ts2Hls"
-	AppVersion   = "1.3.1"
+	AppVersion   = "1.3.2"
 	PlaylistName = "ts2hls.m3u"
 	maxM3UBytes  = 20 * 1024 * 1024
 )
@@ -60,9 +60,9 @@ func main() {
 	http.HandleFunc("/stream/", streamHandler)
 
 	fmt.Println("-------------------------------------------")
-	fmt.Printf("%s v%s started\n", AppName, AppVersion)
-	fmt.Printf("Dashboard: http://127.0.0.1:%s\n", Port)
-	fmt.Printf("Playlist : http://127.0.0.1:%s/playlist/%s\n", Port, PlaylistName)
+	fmt.Printf("%s v%s 服务已启动\n", AppName, AppVersion)
+	fmt.Printf("管理界面: http://127.0.0.1:%s\n", Port)
+	fmt.Printf("订阅地址: http://127.0.0.1:%s/playlist/%s\n", Port, PlaylistName)
 	fmt.Println("-------------------------------------------")
 
 	log.Fatal(http.ListenAndServe(":"+Port, nil))
@@ -95,36 +95,36 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("action") == "reset" {
 			_ = os.Remove("m3u/config.json")
 			pm.LoadConfig()
-			_, _ = w.Write([]byte(`{"status":"ok","message":"config reset"}`))
+			_, _ = w.Write([]byte(`{"status":"ok","message":"配置已重置"}`))
 			return
 		}
 
 		var newCfg manager.FFmpegConfig
 		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
-			http.Error(w, "invalid config payload", http.StatusBadRequest)
+			http.Error(w, "无效的配置数据", http.StatusBadRequest)
 			return
 		}
 
 		pm.Config = newCfg
 		pm.SaveConfig()
-		_, _ = w.Write([]byte(`{"status":"ok","message":"config saved"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","message":"配置保存成功"}`))
 		return
 	}
 
-	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	http.Error(w, "不支持的请求方法", http.StatusMethodNotAllowed)
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		http.Error(w, "仅支持 POST 请求", http.StatusMethodNotAllowed)
 		return
 	}
 
 	file, _, err := r.FormFile("m3uFile")
 	if err != nil {
-		http.Error(w, "file upload failed", http.StatusBadRequest)
+		http.Error(w, "文件上传失败", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -132,19 +132,19 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	tmpPath := filepath.Join("m3u", "source.m3u")
 	out, err := os.Create(tmpPath)
 	if err != nil {
-		http.Error(w, "failed to create temp file", http.StatusInternalServerError)
+		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
 		return
 	}
 
 	written, err := io.Copy(out, io.LimitReader(file, maxM3UBytes+1))
 	if err != nil {
 		_ = out.Close()
-		http.Error(w, "failed to write temp file", http.StatusInternalServerError)
+		http.Error(w, "写入临时文件失败", http.StatusInternalServerError)
 		return
 	}
 	_ = out.Close()
 	if written > maxM3UBytes {
-		http.Error(w, "file too large", http.StatusRequestEntityTooLarge)
+		http.Error(w, "文件过大", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -155,7 +155,7 @@ func uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		http.Error(w, "仅支持 POST 请求", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -163,50 +163,50 @@ func uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		http.Error(w, "请求体格式错误", http.StatusBadRequest)
 		return
 	}
 	req.URL = strings.TrimSpace(req.URL)
 	if req.URL == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
+		http.Error(w, "订阅链接不能为空", http.StatusBadRequest)
 		return
 	}
 
 	parsedURL, err := url.ParseRequestURI(req.URL)
 	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		http.Error(w, "only http/https is supported", http.StatusBadRequest)
+		http.Error(w, "仅支持 http/https 协议链接", http.StatusBadRequest)
 		return
 	}
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Get(req.URL)
 	if err != nil {
-		http.Error(w, "failed to fetch subscription", http.StatusBadGateway)
+		http.Error(w, "拉取订阅失败", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		http.Error(w, fmt.Sprintf("failed to fetch subscription: HTTP %d", resp.StatusCode), http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf("拉取订阅失败，HTTP %d", resp.StatusCode), http.StatusBadGateway)
 		return
 	}
 
 	tmpPath := filepath.Join("m3u", "source.m3u")
 	out, err := os.Create(tmpPath)
 	if err != nil {
-		http.Error(w, "failed to create temp file", http.StatusInternalServerError)
+		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
 		return
 	}
 
 	written, err := io.Copy(out, io.LimitReader(resp.Body, maxM3UBytes+1))
 	if err != nil {
 		_ = out.Close()
-		http.Error(w, "failed to store subscription file", http.StatusInternalServerError)
+		http.Error(w, "保存订阅文件失败", http.StatusInternalServerError)
 		return
 	}
 	_ = out.Close()
 
 	if written > maxM3UBytes {
-		http.Error(w, "subscription file too large", http.StatusRequestEntityTooLarge)
+		http.Error(w, "订阅文件过大", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -217,10 +217,10 @@ func parseAndRespond(w http.ResponseWriter, r *http.Request, sourcePath string) 
 	addr := "http://" + r.Host
 	channels, err := parser.ParseAndGenerate(sourcePath, addr)
 	if err != nil {
-		http.Error(w, "parse failed", http.StatusInternalServerError)
+		http.Error(w, "解析失败", http.StatusInternalServerError)
 		return
 	}
-	_, _ = fmt.Fprintf(w, `{"status":"ok","count":%d,"message":"parse finished"}`, len(channels))
+	_, _ = fmt.Fprintf(w, `{"status":"ok","count":%d,"message":"解析完成"}`, len(channels))
 }
 
 func listHandler(w http.ResponseWriter, r *http.Request) {
@@ -257,7 +257,7 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(file, ".m3u8") {
 		content, err := pm.GetM3u8Content(id, TempDir)
 		if err != nil {
-			http.Error(w, "stream startup failed: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "流启动失败: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
