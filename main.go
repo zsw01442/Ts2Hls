@@ -125,6 +125,97 @@ func sourcePlaylistPath(slug string) string {
 	return "/playlist/" + slug + ".m3u"
 }
 
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+func copyFileIfMissing(src, dst string) {
+	if !fileExists(src) || fileExists(dst) {
+		return
+	}
+
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(dst), 0755)
+	_ = os.WriteFile(dst, data, 0644)
+}
+
+func copyDirContentsIfTargetEmpty(src, dst string) {
+	if !dirExists(src) || !dirExists(dst) {
+		return
+	}
+	dstEntries, err := os.ReadDir(dst)
+	if err != nil || len(dstEntries) > 0 {
+		return
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		copyFileIfMissing(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()))
+	}
+}
+
+func migrateLegacyDataToSource1() {
+	sourceKey := DefaultSourceKey
+	copyFileIfMissing(filepath.Join("m3u", "source.m3u"), sourceFile(sourceKey, "source.m3u"))
+	copyFileIfMissing(filepath.Join("m3u", "config.json"), sourceFile(sourceKey, "config.json"))
+
+	legacyMapping := filepath.Join("m3u", "mapping.json")
+	targetMapping := sourceFile(sourceKey, "mapping.json")
+	if fileExists(legacyMapping) && !fileExists(targetMapping) {
+		data, err := os.ReadFile(legacyMapping)
+		if err == nil {
+			var channels []parser.Channel
+			if err := json.Unmarshal(data, &channels); err == nil {
+				for i := range channels {
+					logo := channels[i].Logo
+					if strings.HasPrefix(logo, "/logos/") && !strings.HasPrefix(logo, "/logos/"+sourceKey+"/") {
+						logoFile := strings.TrimPrefix(logo, "/logos/")
+						channels[i].Logo = "/logos/" + sourceKey + "/logos/" + logoFile
+					}
+				}
+				if out, mErr := json.MarshalIndent(channels, "", "  "); mErr == nil {
+					_ = os.WriteFile(targetMapping, out, 0644)
+				}
+			} else {
+				_ = os.WriteFile(targetMapping, data, 0644)
+			}
+		}
+	}
+
+	legacyPlaylist := filepath.Join("m3u", PlaylistName)
+	targetPlaylist := sourceFile(sourceKey, PlaylistName)
+	if fileExists(legacyPlaylist) && !fileExists(targetPlaylist) {
+		data, err := os.ReadFile(legacyPlaylist)
+		if err == nil {
+			content := strings.ReplaceAll(string(data), "/stream/", "/stream/"+sourceKey+"/")
+			_ = os.WriteFile(targetPlaylist, []byte(content), 0644)
+		}
+	}
+
+	copyDirContentsIfTargetEmpty(filepath.Join("m3u", "logos"), sourceLogosDir(sourceKey))
+}
+
 func toPinyinSlug(name, fallback string) string {
 	clean := strings.TrimSpace(name)
 	if clean == "" {
@@ -268,6 +359,9 @@ func initSourcesAndManagers() error {
 			sourceConfigPath(source.Key),
 		)
 	}
+
+	// 兼容旧版单直播源目录，自动迁移到 source1。
+	migrateLegacyDataToSource1()
 
 	return nil
 }
