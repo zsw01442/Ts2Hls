@@ -1,6 +1,6 @@
 /**
  * Ts2Hls Dashboard Core Logic
- * Version: 1.3.4
+ * Version: 1.3.5
  */
 
 let channels = [];
