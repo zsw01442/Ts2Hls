@@ -257,3 +257,28 @@ func (pm *ProcessManager) GetProcesses() []string {
 	}
 	return res
 }
+
+// ClearAll stops all running ffmpeg processes and removes all temp outputs.
+func (pm *ProcessManager) ClearAll(baseDir string) {
+	pm.Lock()
+	defer pm.Unlock()
+
+	for id, info := range pm.Processes {
+		if info.Cmd != nil && info.Cmd.Process != nil {
+			_ = info.Cmd.Process.Kill()
+			_ = info.Cmd.Wait()
+		}
+		if info.OutputDir != "" {
+			_ = os.RemoveAll(info.OutputDir)
+		}
+		delete(pm.Processes, id)
+	}
+
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		_ = os.RemoveAll(filepath.Join(baseDir, entry.Name()))
+	}
+}

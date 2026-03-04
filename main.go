@@ -25,7 +25,7 @@ const (
 	Port         = "15140"
 	TempDir      = "hls_temp"
 	AppName      = "Ts2Hls"
-	AppVersion   = "1.3.2"
+	AppVersion   = "1.3.3"
 	PlaylistName = "ts2hls.m3u"
 	maxM3UBytes  = 20 * 1024 * 1024
 )
@@ -52,6 +52,7 @@ func main() {
 
 	http.HandleFunc("/api/upload", uploadHandler)
 	http.HandleFunc("/api/upload/url", uploadURLHandler)
+	http.HandleFunc("/api/data/clear", clearDataHandler)
 	http.HandleFunc("/api/list", listHandler)
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/config", configHandler)
@@ -221,6 +222,27 @@ func parseAndRespond(w http.ResponseWriter, r *http.Request, sourcePath string) 
 		return
 	}
 	_, _ = fmt.Fprintf(w, `{"status":"ok","count":%d,"message":"解析完成"}`, len(channels))
+}
+
+func clearDataHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST 请求", http.StatusMethodNotAllowed)
+		return
+	}
+
+	pm.ClearAll(TempDir)
+
+	_ = os.Remove(filepath.Join("m3u", "source.m3u"))
+	_ = os.Remove(filepath.Join("m3u", "mapping.json"))
+	_ = os.Remove(filepath.Join("m3u", PlaylistName))
+
+	logosPath := filepath.Join("m3u", "logos")
+	_ = os.RemoveAll(logosPath)
+	_ = os.MkdirAll(logosPath, 0755)
+
+	_, _ = w.Write([]byte(`{"status":"ok","message":"已清除导入数据"}`))
 }
 
 func listHandler(w http.ResponseWriter, r *http.Request) {

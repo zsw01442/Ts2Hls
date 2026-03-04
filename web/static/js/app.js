@@ -1,6 +1,6 @@
 /**
  * Ts2Hls Dashboard Core Logic
- * Version: 1.3.2
+ * Version: 1.3.3
  */
 
 let channels = [];
@@ -9,8 +9,8 @@ let art = null;
 let isExpertMode = false;
 
 const PLAYLIST_PATH = "/playlist/ts2hls.m3u";
-const DEFAULT_PLAYER_HINT = "请选择频道";
-const ALL_GROUP = "全部";
+const DEFAULT_PLAYER_HINT = "\u8bf7\u9009\u62e9\u9891\u9053";
+const ALL_GROUP = "\u5168\u90e8";
 
 const init = () => {
     if (window.lucide) {
@@ -22,6 +22,7 @@ const init = () => {
     setupConfigActions();
     setupCopyButton();
     setupStopPreviewButton();
+    setupClearDataButton();
     loadListFromServer();
     loadConfigFromServer();
     checkStatus();
@@ -29,17 +30,17 @@ const init = () => {
 };
 
 const setupTabs = () => {
-    const btnC = document.getElementById("tabConsole");
-    const btnP = document.getElementById("tabPreview");
-    const pageC = document.getElementById("consolePage");
-    const pageP = document.getElementById("previewPage");
-    if (!btnC || !btnP || !pageC || !pageP) return;
+    const btnConsole = document.getElementById("tabConsole");
+    const btnPreview = document.getElementById("tabPreview");
+    const pageConsole = document.getElementById("consolePage");
+    const pagePreview = document.getElementById("previewPage");
+    if (!btnConsole || !btnPreview || !pageConsole || !pagePreview) return;
 
     const switchTab = (toConsole) => {
-        btnC.className = toConsole ? "tab-btn active" : "tab-btn inactive";
-        btnP.className = !toConsole ? "tab-btn active" : "tab-btn inactive";
-        pageC.classList.toggle("hidden", !toConsole);
-        pageP.classList.toggle("hidden", toConsole);
+        btnConsole.className = toConsole ? "tab-btn active" : "tab-btn inactive";
+        btnPreview.className = !toConsole ? "tab-btn active" : "tab-btn inactive";
+        pageConsole.classList.toggle("hidden", !toConsole);
+        pagePreview.classList.toggle("hidden", toConsole);
 
         if (!toConsole) {
             setTimeout(() => {
@@ -49,14 +50,14 @@ const setupTabs = () => {
         }
     };
 
-    btnC.onclick = () => switchTab(true);
-    btnP.onclick = () => switchTab(false);
+    btnConsole.onclick = () => switchTab(true);
+    btnPreview.onclick = () => switchTab(false);
 };
 
 const renderPreview = () => {
-    const gc = document.getElementById("groupContainer");
-    const grid = document.getElementById("channelGrid");
-    if (!gc || !grid) return;
+    const groupContainer = document.getElementById("groupContainer");
+    const channelGrid = document.getElementById("channelGrid");
+    if (!groupContainer || !channelGrid) return;
 
     const groups = [...new Set(channels.map((c) => c.group).filter(Boolean))];
     if (!currentGroup || (currentGroup !== ALL_GROUP && !groups.includes(currentGroup))) {
@@ -64,7 +65,7 @@ const renderPreview = () => {
     }
 
     const displayGroups = [...groups, ALL_GROUP];
-    gc.innerHTML = "";
+    groupContainer.innerHTML = "";
     displayGroups.forEach((g) => {
         const btn = document.createElement("button");
         btn.className = `group-tag ${currentGroup === g ? "active" : ""}`;
@@ -73,20 +74,20 @@ const renderPreview = () => {
             currentGroup = g;
             renderPreview();
         };
-        gc.appendChild(btn);
+        groupContainer.appendChild(btn);
     });
 
-    grid.innerHTML = "";
+    channelGrid.innerHTML = "";
     const filtered = currentGroup === ALL_GROUP ? channels : channels.filter((c) => c.group === currentGroup);
     filtered.forEach((ch) => {
         const b = document.createElement("div");
         b.className = "channel-btn";
         b.innerHTML = `
             <img src="${ch.logo || "/static/logo.png"}" onerror="this.src='/static/logo.png'" alt="">
-            <span>${ch.name || "未命名频道"}</span>
+            <span>${ch.name || "\u672a\u547d\u540d\u9891\u9053"}</span>
         `;
         b.onclick = () => playStream(ch);
-        grid.appendChild(b);
+        channelGrid.appendChild(b);
     });
 };
 
@@ -94,6 +95,16 @@ const resetPlayerContainer = (text = DEFAULT_PLAYER_HINT) => {
     const container = document.getElementById("playerContainer");
     if (!container) return;
     container.innerHTML = `<div class="w-full h-full flex items-center justify-center text-slate-400 font-bold">${text}</div>`;
+};
+
+const resetDropZoneContent = () => {
+    const content = document.getElementById("dropZoneContent");
+    if (!content) return;
+    content.innerHTML = `
+        <i data-lucide="file-plus" class="w-10 h-10 text-slate-300 mx-auto mb-4"></i>
+        <p class="text-xs font-bold text-slate-400">\u70b9\u51fb\u6216\u62d6\u62fd M3U \u6587\u4ef6</p>
+    `;
+    if (window.lucide) lucide.createIcons();
 };
 
 const stopPreview = (showPlaceholder = true) => {
@@ -220,7 +231,7 @@ function setupConfigActions() {
         });
 
         configActions.classList.toggle("hidden", !isExpertMode);
-        expertModeBtn.textContent = isExpertMode ? "取消修改" : "编辑配置";
+        expertModeBtn.textContent = isExpertMode ? "\u53d6\u6d88\u4fee\u6539" : "\u7f16\u8f91\u914d\u7f6e";
     };
 
     saveConfigBtn.onclick = async () => {
@@ -238,17 +249,17 @@ function setupConfigActions() {
                 body: JSON.stringify(data),
             });
             if (!res.ok) {
-                throw new Error("保存失败");
+                throw new Error("\u4fdd\u5b58\u5931\u8d25");
             }
-            alert("配置已更新");
+            alert("\u914d\u7f6e\u5df2\u66f4\u65b0");
             location.reload();
         } catch (_) {
-            alert("保存失败");
+            alert("\u4fdd\u5b58\u5931\u8d25");
         }
     };
 
     resetConfigBtn.onclick = async () => {
-        if (!confirm("确定要恢复默认配置吗？")) return;
+        if (!confirm("\u786e\u5b9a\u8981\u6062\u590d\u9ed8\u8ba4\u914d\u7f6e\u5417\uff1f")) return;
         await fetch("/api/config?action=reset", { method: "POST" });
         location.reload();
     };
@@ -291,19 +302,19 @@ function setupDragAndDrop() {
         if (!content) return;
         content.innerHTML = `
             <i data-lucide="check-circle" class="w-10 h-10 text-emerald-500 mx-auto mb-4"></i>
-            <p class="text-xs font-bold text-indigo-600">已选择: ${file.name}</p>
+            <p class="text-xs font-bold text-indigo-600">\u5df2\u9009\u62e9: ${file.name}</p>
         `;
         if (window.lucide) lucide.createIcons();
     }
 
     uploadBtn.onclick = async () => {
         if (!input.files || !input.files[0]) {
-            alert("请先选择 M3U 文件");
+            alert("\u8bf7\u5148\u9009\u62e9 M3U \u6587\u4ef6");
             return;
         }
 
         uploadBtn.disabled = true;
-        uploadBtn.textContent = "正在处理...";
+        uploadBtn.textContent = "\u6b63\u5728\u5904\u7406...";
 
         const fd = new FormData();
         fd.append("m3uFile", input.files[0]);
@@ -312,18 +323,18 @@ function setupDragAndDrop() {
             const res = await fetch("/api/upload", { method: "POST", body: fd });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "上传失败");
+                throw new Error(msg || "\u4e0a\u4f20\u5931\u8d25");
             }
 
             const data = await res.json();
-            alert(`导入成功，已解析 ${data.count || 0} 路频道`);
+            alert(`\u5bfc\u5165\u6210\u529f\uff0c\u5df2\u89e3\u6790 ${data.count || 0} \u8def\u9891\u9053`);
             await loadListFromServer();
             input.value = "";
         } catch (e) {
-            alert(`上传失败：${e.message || "请求出错"}`);
+            alert(`\u4e0a\u4f20\u5931\u8d25\uff1a${e.message || "\u8bf7\u6c42\u51fa\u9519"}`);
         } finally {
             uploadBtn.disabled = false;
-            uploadBtn.textContent = "上传并转换";
+            uploadBtn.textContent = "\u4e0a\u4f20\u5e76\u8f6c\u6362";
         }
     };
 }
@@ -336,13 +347,13 @@ function setupUrlImport() {
     const submit = async () => {
         const value = (urlInput.value || "").trim();
         if (!/^https?:\/\//i.test(value)) {
-            alert("请输入有效的 http/https M3U 订阅链接");
+            alert("\u8bf7\u8f93\u5165\u6709\u6548\u7684 http/https M3U \u8ba2\u9605\u94fe\u63a5");
             return;
         }
 
         uploadUrlBtn.disabled = true;
         const oldText = uploadUrlBtn.textContent;
-        uploadUrlBtn.textContent = "正在处理...";
+        uploadUrlBtn.textContent = "\u6b63\u5728\u5904\u7406...";
 
         try {
             const res = await fetch("/api/upload/url", {
@@ -352,15 +363,15 @@ function setupUrlImport() {
             });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "导入失败");
+                throw new Error(msg || "\u5bfc\u5165\u5931\u8d25");
             }
 
             const data = await res.json();
-            alert(`导入成功，已解析 ${data.count || 0} 路频道`);
+            alert(`\u5bfc\u5165\u6210\u529f\uff0c\u5df2\u89e3\u6790 ${data.count || 0} \u8def\u9891\u9053`);
             urlInput.value = "";
             await loadListFromServer();
         } catch (e) {
-            alert(`链接导入失败：${e.message || "请求出错"}`);
+            alert(`\u94fe\u63a5\u5bfc\u5165\u5931\u8d25\uff1a${e.message || "\u8bf7\u6c42\u51fa\u9519"}`);
         } finally {
             uploadUrlBtn.disabled = false;
             uploadUrlBtn.textContent = oldText;
@@ -374,6 +385,50 @@ function setupUrlImport() {
             submit();
         }
     });
+}
+
+function setupClearDataButton() {
+    const clearBtn = document.getElementById("clearDataBtn");
+    if (!clearBtn) return;
+
+    clearBtn.onclick = async () => {
+        if (!confirm("\u786e\u5b9a\u6e05\u9664\u5df2\u5bfc\u5165\u7684\u6570\u636e\u5417\uff1f")) return;
+
+        clearBtn.disabled = true;
+        const oldText = clearBtn.textContent;
+        clearBtn.textContent = "\u6b63\u5728\u6e05\u9664...";
+
+        try {
+            const res = await fetch("/api/data/clear", { method: "POST" });
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(msg || "\u6e05\u9664\u5931\u8d25");
+            }
+
+            stopPreview(true);
+            channels = [];
+            currentGroup = ALL_GROUP;
+            renderPreview();
+
+            const channelCount = document.getElementById("channelCount");
+            if (channelCount) channelCount.textContent = "0";
+            resetDropZoneContent();
+
+            const fileInput = document.getElementById("fileInput");
+            if (fileInput) fileInput.value = "";
+
+            const urlInput = document.getElementById("m3uUrlInput");
+            if (urlInput) urlInput.value = "";
+
+            await loadListFromServer();
+            alert("\u5df2\u6e05\u9664\u5df2\u5bfc\u5165\u6570\u636e");
+        } catch (e) {
+            alert(`\u6e05\u9664\u5931\u8d25\uff1a${e.message || "\u8bf7\u6c42\u51fa\u9519"}`);
+        } finally {
+            clearBtn.disabled = false;
+            clearBtn.textContent = oldText;
+        }
+    };
 }
 
 function setupCopyButton() {
@@ -410,7 +465,7 @@ function setupCopyButton() {
         const url = m3uUrl.value || "";
         copyToClipboard(url).then(() => {
             const oldText = copyBtn.textContent;
-            copyBtn.textContent = "已复制";
+            copyBtn.textContent = "\u5df2\u590d\u5236";
             copyBtn.classList.replace("bg-slate-900", "bg-emerald-600");
             setTimeout(() => {
                 copyBtn.textContent = oldText;

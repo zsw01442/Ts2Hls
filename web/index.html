@@ -37,7 +37,7 @@
                 <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
                     <img src="/static/logo.png" class="w-6 h-6 object-contain" alt="Logo">
                 </div>
-                <h1 class="text-xl md:text-2xl font-black tracking-tight">Ts2Hls <span class="text-indigo-600 text-sm font-mono ml-1">v1.3.2</span></h1>
+                <h1 class="text-xl md:text-2xl font-black tracking-tight">Ts2Hls <span class="text-indigo-600 text-sm font-mono ml-1">v1.3.3</span></h1>
             </div>
             <div class="flex w-full md:w-64 bg-slate-100 p-1 rounded-xl shadow-inner">
                 <button id="tabConsole" class="tab-btn active">系统控制</button>
@@ -67,7 +67,10 @@
 
             <div class="grid grid-cols-1 lg:grid-cols-10 gap-6">
                 <div class="lg:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-100 flex flex-col">
-                    <h3 class="font-bold mb-4 flex items-center gap-2 text-sm uppercase text-slate-600 tracking-wider"><i data-lucide="file-up" class="text-indigo-500 w-4"></i>数据导入</h3>
+                    <div class="flex items-center justify-between mb-4 gap-3">
+                        <h3 class="font-bold flex items-center gap-2 text-sm uppercase text-slate-600 tracking-wider"><i data-lucide="file-up" class="text-indigo-500 w-4"></i>数据导入</h3>
+                        <button id="clearDataBtn" class="text-[10px] font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100 whitespace-nowrap">清除已导入数据</button>
+                    </div>
                     <div id="dropZone" class="h-[116px] min-h-[116px] border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center hover:bg-indigo-50 cursor-pointer transition-colors text-center">
                         <div id="dropZoneContent">
                             <i data-lucide="file-plus" class="w-10 h-10 text-slate-300 mx-auto mb-4"></i>
@@ -217,7 +220,7 @@
                 <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] group-hover:text-indigo-600 transition-colors">开源项目</p>
                 <i data-lucide="github" class="w-4 h-4 text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </a>
-            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TS2HLS v1.3.2</div>
+            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">&copy; 2026 TS2HLS v1.3.3</div>
         </footer>
     </div>
     <script src="/static/js/app.js"></script>
