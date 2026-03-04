@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ const (
 	Port         = "15140"
 	TempDir      = "hls_temp"
 	AppName      = "Ts2Hls"
-	AppVersion   = "1.3.3"
+	AppVersion   = "1.3.4"
 	PlaylistName = "ts2hls.m3u"
 	maxM3UBytes  = 20 * 1024 * 1024
 )

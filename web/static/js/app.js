@@ -1,6 +1,6 @@
 /**
  * Ts2Hls Dashboard Core Logic
- * Version: 1.3.3
+ * Version: 1.3.4
  */
 
 let channels = [];
@@ -391,7 +391,9 @@ function setupClearDataButton() {
     const clearBtn = document.getElementById("clearDataBtn");
     if (!clearBtn) return;
 
-    clearBtn.onclick = async () => {
+    clearBtn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         if (!confirm("\u786e\u5b9a\u6e05\u9664\u5df2\u5bfc\u5165\u7684\u6570\u636e\u5417\uff1f")) return;
 
         clearBtn.disabled = true;
@@ -428,7 +430,7 @@ function setupClearDataButton() {
             clearBtn.disabled = false;
             clearBtn.textContent = oldText;
         }
-    };
+    });
 }
 
 function setupCopyButton() {
