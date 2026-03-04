@@ -40,11 +40,18 @@ type ProcessManager struct {
 	ConfigPath  string
 }
 
-func NewProcessManager() *ProcessManager {
+func NewProcessManager(mappingPath, configPath string) *ProcessManager {
+	if mappingPath == "" {
+		mappingPath = "m3u/mapping.json"
+	}
+	if configPath == "" {
+		configPath = "m3u/config.json"
+	}
+
 	pm := &ProcessManager{
 		Processes:   make(map[string]*ProcessInfo),
-		MappingPath: "m3u/mapping.json",
-		ConfigPath:  "m3u/config.json",
+		MappingPath: mappingPath,
+		ConfigPath:  configPath,
 	}
 
 	// 初始化时加载配置

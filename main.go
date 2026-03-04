@@ -10,36 +10,52 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"ts2hls/manager"
 	"ts2hls/parser"
 
+	pinyin "github.com/mozillazg/go-pinyin"
 	"github.com/shirou/gopsutil/v3/cpu"
 )
 
-var pm *manager.ProcessManager
-
 const (
-	Port         = "15140"
-	TempDir      = "hls_temp"
-	AppName      = "Ts2Hls"
-	AppVersion   = "1.3.5"
-	PlaylistName = "ts2hls.m3u"
-	maxM3UBytes  = 20 * 1024 * 1024
+	Port             = "15140"
+	TempDir          = "hls_temp"
+	AppName          = "Ts2Hls"
+	AppVersion       = "1.4.0"
+	PlaylistName     = "ts2hls.m3u"
+	SourceProfiles   = "m3u/sources.json"
+	DefaultSourceKey = "source1"
+	MaxSourceNameLen = 24
+	maxM3UBytes      = 20 * 1024 * 1024
+)
+
+type SourceProfile struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+var (
+	pmBySource map[string]*manager.ProcessManager
+	sourceList []SourceProfile
+	sourceMu   sync.RWMutex
 )
 
 func main() {
-	pm = manager.NewProcessManager()
-
-	_ = os.MkdirAll(TempDir, 0755)
-	_ = os.MkdirAll(filepath.Join("m3u", "logos"), 0755)
+	if err := initSourcesAndManagers(); err != nil {
+		log.Fatalf("初始化失败: %v", err)
+	}
 
 	staticFS := http.FileServer(http.Dir(filepath.Join("web", "static")))
 	http.Handle("/static/", http.StripPrefix("/static/", staticFS))
 
-	logoFS := http.FileServer(http.Dir(filepath.Join("m3u", "logos")))
+	// /logos/source1/logos/ch001.png -> m3u/source1/logos/ch001.png
+	logoFS := http.FileServer(http.Dir("m3u"))
 	http.Handle("/logos/", http.StripPrefix("/logos/", logoFS))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +66,8 @@ func main() {
 		http.NotFound(w, r)
 	})
 
+	http.HandleFunc("/api/sources", sourcesHandler)
+	http.HandleFunc("/api/sources/rename", renameSourceHandler)
 	http.HandleFunc("/api/upload", uploadHandler)
 	http.HandleFunc("/api/upload/url", uploadURLHandler)
 	http.HandleFunc("/api/data/clear", clearDataHandler)
@@ -57,16 +75,262 @@ func main() {
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/config", configHandler)
 
-	http.HandleFunc("/playlist/"+PlaylistName, playlistHandler)
+	http.HandleFunc("/playlist/", playlistHandler)
 	http.HandleFunc("/stream/", streamHandler)
 
 	fmt.Println("-------------------------------------------")
 	fmt.Printf("%s v%s 服务已启动\n", AppName, AppVersion)
 	fmt.Printf("管理界面: http://127.0.0.1:%s\n", Port)
-	fmt.Printf("订阅地址: http://127.0.0.1:%s/playlist/%s\n", Port, PlaylistName)
+	for _, src := range snapshotSources() {
+		fmt.Printf("%s 订阅: http://127.0.0.1:%s%s\n", src.Name, Port, sourcePlaylistPath(src.Slug))
+	}
 	fmt.Println("-------------------------------------------")
 
 	log.Fatal(http.ListenAndServe(":"+Port, nil))
+}
+
+func defaultSources() []SourceProfile {
+	return []SourceProfile{
+		{Key: "source1", Name: "直播源一"},
+		{Key: "source2", Name: "直播源二"},
+		{Key: "source3", Name: "直播源三"},
+	}
+}
+
+func sourceM3uDir(sourceKey string) string {
+	return filepath.Join("m3u", sourceKey)
+}
+
+func sourceTempDir(sourceKey string) string {
+	return filepath.Join(TempDir, sourceKey)
+}
+
+func sourceLogosDir(sourceKey string) string {
+	return filepath.Join(sourceM3uDir(sourceKey), "logos")
+}
+
+func sourceFile(sourceKey, name string) string {
+	return filepath.Join(sourceM3uDir(sourceKey), name)
+}
+
+func sourceConfigPath(sourceKey string) string {
+	return sourceFile(sourceKey, "config.json")
+}
+
+func sourceMappingPath(sourceKey string) string {
+	return sourceFile(sourceKey, "mapping.json")
+}
+
+func sourcePlaylistPath(slug string) string {
+	return "/playlist/" + slug + ".m3u"
+}
+
+func toPinyinSlug(name, fallback string) string {
+	clean := strings.TrimSpace(name)
+	if clean == "" {
+		return fallback
+	}
+
+	args := pinyin.NewArgs()
+	args.Separator = ""
+	parts := pinyin.Pinyin(clean, args)
+	var b strings.Builder
+	for _, row := range parts {
+		if len(row) == 0 {
+			continue
+		}
+		b.WriteString(row[0])
+	}
+
+	slug := strings.ToLower(b.String())
+	if slug == "" {
+		slug = strings.ToLower(clean)
+	}
+
+	var out strings.Builder
+	prevDash := false
+	for _, r := range slug {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			out.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash {
+				out.WriteRune('-')
+				prevDash = true
+			}
+		}
+	}
+
+	final := strings.Trim(out.String(), "-")
+	if final == "" {
+		final = fallback
+	}
+	if len(final) > 32 {
+		final = strings.Trim(final[:32], "-")
+	}
+	if final == "" {
+		final = fallback
+	}
+	return final
+}
+
+func normalizeSources(items []SourceProfile) []SourceProfile {
+	base := defaultSources()
+	index := make(map[string]SourceProfile, len(items))
+	for _, item := range items {
+		k := strings.TrimSpace(item.Key)
+		if k == "" {
+			continue
+		}
+		index[k] = item
+	}
+
+	out := make([]SourceProfile, 0, len(base))
+	for _, def := range base {
+		existing, ok := index[def.Key]
+		current := def
+		if ok {
+			if name := strings.TrimSpace(existing.Name); name != "" {
+				current.Name = name
+			}
+			current.Slug = strings.TrimSpace(existing.Slug)
+		}
+		if current.Slug == "" {
+			current.Slug = toPinyinSlug(current.Name, current.Key)
+		}
+		out = append(out, current)
+	}
+
+	ensureUniqueSlugs(out)
+	return out
+}
+
+func ensureUniqueSlugs(items []SourceProfile) {
+	used := map[string]int{}
+	for i := range items {
+		base := strings.TrimSpace(items[i].Slug)
+		if base == "" {
+			base = toPinyinSlug(items[i].Name, items[i].Key)
+		}
+		seq := 1
+		slug := base
+		for {
+			if _, ok := used[slug]; !ok {
+				break
+			}
+			seq++
+			slug = fmt.Sprintf("%s-%d", base, seq)
+		}
+		used[slug] = 1
+		items[i].Slug = slug
+	}
+}
+
+func saveSources(items []SourceProfile) error {
+	data, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(SourceProfiles, data, 0644)
+}
+
+func initSourcesAndManagers() error {
+	_ = os.MkdirAll("m3u", 0755)
+	_ = os.MkdirAll(TempDir, 0755)
+
+	raw, err := os.ReadFile(SourceProfiles)
+	if err != nil {
+		sourceList = normalizeSources(nil)
+		if saveErr := saveSources(sourceList); saveErr != nil {
+			return saveErr
+		}
+	} else {
+		var loaded []SourceProfile
+		if uErr := json.Unmarshal(raw, &loaded); uErr != nil {
+			sourceList = normalizeSources(nil)
+		} else {
+			sourceList = normalizeSources(loaded)
+		}
+		if saveErr := saveSources(sourceList); saveErr != nil {
+			return saveErr
+		}
+	}
+
+	pmBySource = make(map[string]*manager.ProcessManager, len(sourceList))
+	for _, source := range sourceList {
+		_ = os.MkdirAll(sourceM3uDir(source.Key), 0755)
+		_ = os.MkdirAll(sourceLogosDir(source.Key), 0755)
+		_ = os.MkdirAll(sourceTempDir(source.Key), 0755)
+
+		pmBySource[source.Key] = manager.NewProcessManager(
+			sourceMappingPath(source.Key),
+			sourceConfigPath(source.Key),
+		)
+	}
+
+	return nil
+}
+
+func snapshotSources() []SourceProfile {
+	sourceMu.RLock()
+	defer sourceMu.RUnlock()
+
+	out := make([]SourceProfile, len(sourceList))
+	copy(out, sourceList)
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Key < out[j].Key
+	})
+	return out
+}
+
+func defaultSourceKey() string {
+	sourceMu.RLock()
+	defer sourceMu.RUnlock()
+	if len(sourceList) == 0 {
+		return DefaultSourceKey
+	}
+	return sourceList[0].Key
+}
+
+func findSourceByKey(key string) (SourceProfile, bool) {
+	sourceMu.RLock()
+	defer sourceMu.RUnlock()
+	for _, src := range sourceList {
+		if src.Key == key {
+			return src, true
+		}
+	}
+	return SourceProfile{}, false
+}
+
+func findSourceBySlug(slug string) (SourceProfile, bool) {
+	sourceMu.RLock()
+	defer sourceMu.RUnlock()
+	for _, src := range sourceList {
+		if src.Slug == slug {
+			return src, true
+		}
+	}
+	return SourceProfile{}, false
+}
+
+func resolveSourceKey(r *http.Request) string {
+	key := strings.TrimSpace(r.URL.Query().Get("source"))
+	if key == "" {
+		return defaultSourceKey()
+	}
+	if _, ok := findSourceByKey(key); ok {
+		return key
+	}
+	return defaultSourceKey()
+}
+
+func sourceManager(key string) *manager.ProcessManager {
+	if pm, ok := pmBySource[key]; ok {
+		return pm
+	}
+	return nil
 }
 
 func getSystemStats() (string, string) {
@@ -83,9 +347,103 @@ func getSystemStats() (string, string) {
 	return cpuStr, memUsed
 }
 
+func sourcesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		http.Error(w, "仅支持 GET 请求", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(struct {
+		Sources []SourceProfile `json:"sources"`
+	}{
+		Sources: snapshotSources(),
+	})
+}
+
+func renameSourceHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST 请求", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Key  string `json:"key"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "请求体格式错误", http.StatusBadRequest)
+		return
+	}
+
+	req.Key = strings.TrimSpace(req.Key)
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Key == "" || req.Name == "" {
+		http.Error(w, "参数不能为空", http.StatusBadRequest)
+		return
+	}
+	if len([]rune(req.Name)) > MaxSourceNameLen {
+		http.Error(w, "名称过长", http.StatusBadRequest)
+		return
+	}
+
+	var updated SourceProfile
+	sourceMu.Lock()
+	found := false
+	for i := range sourceList {
+		if sourceList[i].Key == req.Key {
+			sourceList[i].Name = req.Name
+			sourceList[i].Slug = toPinyinSlug(req.Name, sourceList[i].Key)
+			found = true
+			break
+		}
+	}
+	if !found {
+		sourceMu.Unlock()
+		http.Error(w, "直播源不存在", http.StatusBadRequest)
+		return
+	}
+
+	ensureUniqueSlugs(sourceList)
+	for _, src := range sourceList {
+		if src.Key == req.Key {
+			updated = src
+			break
+		}
+	}
+	snapshot := make([]SourceProfile, len(sourceList))
+	copy(snapshot, sourceList)
+	sourceMu.Unlock()
+
+	if err := saveSources(snapshot); err != nil {
+		http.Error(w, "保存直播源信息失败", http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(struct {
+		Status   string        `json:"status"`
+		Source   SourceProfile `json:"source"`
+		Playlist string        `json:"playlist"`
+	}{
+		Status:   "ok",
+		Source:   updated,
+		Playlist: sourcePlaylistPath(updated.Slug),
+	})
+}
+
 func configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
+
+	sourceKey := resolveSourceKey(r)
+	pm := sourceManager(sourceKey)
+	if pm == nil {
+		http.Error(w, "无效的直播源", http.StatusBadRequest)
+		return
+	}
 
 	if r.Method == http.MethodGet {
 		_ = json.NewEncoder(w).Encode(pm.Config)
@@ -94,7 +452,7 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		if r.URL.Query().Get("action") == "reset" {
-			_ = os.Remove("m3u/config.json")
+			_ = os.Remove(sourceConfigPath(sourceKey))
 			pm.LoadConfig()
 			_, _ = w.Write([]byte(`{"status":"ok","message":"配置已重置"}`))
 			return
@@ -123,6 +481,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sourceKey := resolveSourceKey(r)
+
 	file, _, err := r.FormFile("m3uFile")
 	if err != nil {
 		http.Error(w, "文件上传失败", http.StatusBadRequest)
@@ -130,7 +490,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	tmpPath := filepath.Join("m3u", "source.m3u")
+	tmpPath := sourceFile(sourceKey, "source.m3u")
 	out, err := os.Create(tmpPath)
 	if err != nil {
 		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
@@ -149,7 +509,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parseAndRespond(w, r, tmpPath)
+	parseAndRespond(w, r, tmpPath, sourceKey)
 }
 
 func uploadURLHandler(w http.ResponseWriter, r *http.Request) {
@@ -159,6 +519,8 @@ func uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "仅支持 POST 请求", http.StatusMethodNotAllowed)
 		return
 	}
+
+	sourceKey := resolveSourceKey(r)
 
 	var req struct {
 		URL string `json:"url"`
@@ -191,7 +553,7 @@ func uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpPath := filepath.Join("m3u", "source.m3u")
+	tmpPath := sourceFile(sourceKey, "source.m3u")
 	out, err := os.Create(tmpPath)
 	if err != nil {
 		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
@@ -211,12 +573,18 @@ func uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parseAndRespond(w, r, tmpPath)
+	parseAndRespond(w, r, tmpPath, sourceKey)
 }
 
-func parseAndRespond(w http.ResponseWriter, r *http.Request, sourcePath string) {
+func parseAndRespond(w http.ResponseWriter, r *http.Request, sourcePath, sourceKey string) {
 	addr := "http://" + r.Host
-	channels, err := parser.ParseAndGenerate(sourcePath, addr)
+	channels, err := parser.ParseAndGenerate(
+		sourcePath,
+		sourceM3uDir(sourceKey),
+		addr,
+		"/stream/"+sourceKey,
+		"/logos/"+sourceKey+"/logos",
+	)
 	if err != nil {
 		http.Error(w, "解析失败", http.StatusInternalServerError)
 		return
@@ -232,13 +600,20 @@ func clearDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pm.ClearAll(TempDir)
+	sourceKey := resolveSourceKey(r)
+	pm := sourceManager(sourceKey)
+	if pm == nil {
+		http.Error(w, "无效的直播源", http.StatusBadRequest)
+		return
+	}
 
-	_ = os.Remove(filepath.Join("m3u", "source.m3u"))
-	_ = os.Remove(filepath.Join("m3u", "mapping.json"))
-	_ = os.Remove(filepath.Join("m3u", PlaylistName))
+	pm.ClearAll(sourceTempDir(sourceKey))
 
-	logosPath := filepath.Join("m3u", "logos")
+	_ = os.Remove(sourceFile(sourceKey, "source.m3u"))
+	_ = os.Remove(sourceFile(sourceKey, "mapping.json"))
+	_ = os.Remove(sourceFile(sourceKey, PlaylistName))
+
+	logosPath := sourceLogosDir(sourceKey)
 	_ = os.RemoveAll(logosPath)
 	_ = os.MkdirAll(logosPath, 0755)
 
@@ -250,7 +625,8 @@ func listHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
 
-	data, err := os.ReadFile("m3u/mapping.json")
+	sourceKey := resolveSourceKey(r)
+	data, err := os.ReadFile(sourceMappingPath(sourceKey))
 	if err != nil {
 		_, _ = w.Write([]byte("[]"))
 		return
@@ -261,23 +637,64 @@ func listHandler(w http.ResponseWriter, r *http.Request) {
 func playlistHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/mpegurl")
-	http.ServeFile(w, r, filepath.Join("m3u", PlaylistName))
+
+	path := strings.TrimPrefix(r.URL.Path, "/playlist/")
+	path = strings.TrimSpace(path)
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	var sourceKey string
+	if path == PlaylistName {
+		sourceKey = defaultSourceKey() // 兼容旧地址 /playlist/ts2hls.m3u
+	} else if strings.HasSuffix(path, "/"+PlaylistName) {
+		key := strings.TrimSuffix(path, "/"+PlaylistName)
+		if _, ok := findSourceByKey(key); ok {
+			sourceKey = key
+		}
+	} else if strings.HasSuffix(path, ".m3u") {
+		slug := strings.TrimSuffix(path, ".m3u")
+		if src, ok := findSourceBySlug(slug); ok {
+			sourceKey = src.Key
+		}
+	}
+
+	if sourceKey == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.ServeFile(w, r, sourceFile(sourceKey, PlaylistName))
 }
 
 func streamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 3 {
+	// /stream/{source}/{channel}/index.m3u8
+	if len(parts) < 4 {
 		http.NotFound(w, r)
 		return
 	}
 
-	id, file := parts[1], parts[2]
+	sourceKey, id := parts[1], parts[2]
+	if _, ok := findSourceByKey(sourceKey); !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	pm := sourceManager(sourceKey)
+	if pm == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	file := strings.Join(parts[3:], "/")
 	pm.KeepAlive(id)
 
 	if strings.HasSuffix(file, ".m3u8") {
-		content, err := pm.GetM3u8Content(id, TempDir)
+		content, err := pm.GetM3u8Content(id, sourceTempDir(sourceKey))
 		if err != nil {
 			http.Error(w, "流启动失败: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -287,7 +704,7 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tsPath := filepath.Join(TempDir, id, file)
+	tsPath := filepath.Join(sourceTempDir(sourceKey), id, file)
 	http.ServeFile(w, r, tsPath)
 }
 
@@ -295,6 +712,13 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+
+	sourceKey := resolveSourceKey(r)
+	pm := sourceManager(sourceKey)
+	if pm == nil {
+		http.Error(w, "无效的直播源", http.StatusBadRequest)
+		return
+	}
 
 	cpuUsage, memUsage := getSystemStats()
 	data := struct {
@@ -311,4 +735,3 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 
 	_ = json.NewEncoder(w).Encode(data)
 }
-

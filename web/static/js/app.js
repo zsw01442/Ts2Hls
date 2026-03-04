@@ -1,21 +1,24 @@
 /**
  * Ts2Hls Dashboard Core Logic
- * Version: 1.3.5
+ * Version: 1.4.0
  */
 
 let channels = [];
 let currentGroup = "";
 let art = null;
 let isExpertMode = false;
+let sources = [];
+let currentSourceKey = "";
 
-const PLAYLIST_PATH = "/playlist/ts2hls.m3u";
-const DEFAULT_PLAYER_HINT = "\u8bf7\u9009\u62e9\u9891\u9053";
-const ALL_GROUP = "\u5168\u90e8";
+const DEFAULT_PLAYER_HINT = "请选择频道";
+const ALL_GROUP = "全部";
+const SOURCE_CACHE_KEY = "ts2hls.active_source";
 
-const init = () => {
+const init = async () => {
     if (window.lucide) {
         lucide.createIcons();
     }
+
     setupTabs();
     setupDragAndDrop();
     setupUrlImport();
@@ -23,11 +26,150 @@ const init = () => {
     setupCopyButton();
     setupStopPreviewButton();
     setupClearDataButton();
-    loadListFromServer();
-    loadConfigFromServer();
-    checkStatus();
+    setupSourceRenameButton();
+
+    await loadSources();
+    renderSourceTabs();
+    await loadCurrentSourceData();
+
     setInterval(checkStatus, 3000);
 };
+
+const withSourceQuery = (url) => {
+    const key = currentSourceKey || "source1";
+    const joiner = url.includes("?") ? "&" : "?";
+    return `${url}${joiner}source=${encodeURIComponent(key)}`;
+};
+
+const getCurrentSource = () => {
+    return sources.find((s) => s.key === currentSourceKey) || sources[0] || null;
+};
+
+const playlistPathForSource = (source) => {
+    if (!source || !source.slug) return "";
+    return `/playlist/${source.slug}.m3u`;
+};
+
+const updatePlaylistUrl = () => {
+    const m3uUrl = document.getElementById("m3uUrl");
+    if (!m3uUrl) return;
+    const src = getCurrentSource();
+    const path = playlistPathForSource(src);
+    m3uUrl.value = path ? `${window.location.origin}${path}` : "";
+};
+
+const renderSourceTabs = () => {
+    const container = document.getElementById("sourceSwitcher");
+    if (!container) return;
+
+    container.innerHTML = "";
+    sources.forEach((source) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `source-btn ${currentSourceKey === source.key ? "active" : ""}`;
+        btn.textContent = source.name || source.key;
+        btn.onclick = () => switchSource(source.key);
+        container.appendChild(btn);
+    });
+};
+
+const switchSource = async (sourceKey) => {
+    if (!sourceKey || sourceKey === currentSourceKey) return;
+
+    currentSourceKey = sourceKey;
+    localStorage.setItem(SOURCE_CACHE_KEY, sourceKey);
+    currentGroup = "";
+    channels = [];
+
+    stopPreview(true);
+    resetDropZoneContent();
+
+    const fileInput = document.getElementById("fileInput");
+    if (fileInput) fileInput.value = "";
+    const urlInput = document.getElementById("m3uUrlInput");
+    if (urlInput) urlInput.value = "";
+
+    renderSourceTabs();
+    await loadCurrentSourceData();
+};
+
+const loadSources = async () => {
+    try {
+        const res = await fetch("/api/sources?t=" + Date.now());
+        if (!res.ok) throw new Error("加载直播源失败");
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.sources;
+        sources = Array.isArray(list) ? list : [];
+    } catch (_) {
+        sources = [
+            { key: "source1", name: "直播源一", slug: "source1" },
+            { key: "source2", name: "直播源二", slug: "source2" },
+            { key: "source3", name: "直播源三", slug: "source3" },
+        ];
+    }
+
+    const cached = localStorage.getItem(SOURCE_CACHE_KEY);
+    const hasCached = cached && sources.some((s) => s.key === cached);
+    if (hasCached) {
+        currentSourceKey = cached;
+    } else if (!currentSourceKey || !sources.some((s) => s.key === currentSourceKey)) {
+        currentSourceKey = (sources[0] && sources[0].key) || "source1";
+        localStorage.setItem(SOURCE_CACHE_KEY, currentSourceKey);
+    }
+};
+
+const loadCurrentSourceData = async () => {
+    renderPreview();
+    updatePlaylistUrl();
+    await loadListFromServer();
+    await loadConfigFromServer();
+    await checkStatus();
+};
+
+function setupSourceRenameButton() {
+    const renameBtn = document.getElementById("renameSourceBtn");
+    if (!renameBtn) return;
+
+    renameBtn.onclick = async () => {
+        const current = getCurrentSource();
+        if (!current) return;
+
+        const name = prompt("请输入新的直播源名称", current.name || "");
+        if (name === null) return;
+
+        const clean = (name || "").trim();
+        if (!clean) {
+            alert("名称不能为空");
+            return;
+        }
+
+        renameBtn.disabled = true;
+        const oldText = renameBtn.textContent;
+        renameBtn.textContent = "正在保存...";
+
+        try {
+            const res = await fetch("/api/sources/rename", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ key: currentSourceKey, name: clean }),
+            });
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(msg || "重命名失败");
+            }
+
+            await loadSources();
+            renderSourceTabs();
+            updatePlaylistUrl();
+            alert("直播源名称已更新");
+        } catch (e) {
+            alert(`重命名失败：${e.message || "请求出错"}`);
+        } finally {
+            renameBtn.disabled = false;
+            renameBtn.textContent = oldText;
+        }
+    };
+}
 
 const setupTabs = () => {
     const btnConsole = document.getElementById("tabConsole");
@@ -60,11 +202,12 @@ const renderPreview = () => {
     if (!groupContainer || !channelGrid) return;
 
     const groups = [...new Set(channels.map((c) => c.group).filter(Boolean))];
-    if (!currentGroup || (currentGroup !== ALL_GROUP && !groups.includes(currentGroup))) {
-        currentGroup = groups[0] || ALL_GROUP;
+    const displayGroups = groups.length > 0 ? [...groups, ALL_GROUP] : [ALL_GROUP];
+
+    if (!currentGroup || !displayGroups.includes(currentGroup)) {
+        currentGroup = displayGroups[0];
     }
 
-    const displayGroups = [...groups, ALL_GROUP];
     groupContainer.innerHTML = "";
     displayGroups.forEach((g) => {
         const btn = document.createElement("button");
@@ -84,7 +227,7 @@ const renderPreview = () => {
         b.className = "channel-btn";
         b.innerHTML = `
             <img src="${ch.logo || "/static/logo.png"}" onerror="this.src='/static/logo.png'" alt="">
-            <span>${ch.name || "\u672a\u547d\u540d\u9891\u9053"}</span>
+            <span>${ch.name || "未命名频道"}</span>
         `;
         b.onclick = () => playStream(ch);
         channelGrid.appendChild(b);
@@ -102,7 +245,7 @@ const resetDropZoneContent = () => {
     if (!content) return;
     content.innerHTML = `
         <i data-lucide="file-plus" class="w-10 h-10 text-slate-300 mx-auto mb-4"></i>
-        <p class="text-xs font-bold text-slate-400">\u70b9\u51fb\u6216\u62d6\u62fd M3U \u6587\u4ef6</p>
+        <p class="text-xs font-bold text-slate-400">点击或拖拽 M3U 文件</p>
     `;
     if (window.lucide) lucide.createIcons();
 };
@@ -137,14 +280,15 @@ const stopPreview = (showPlaceholder = true) => {
 
 const playStream = (ch) => {
     const container = document.getElementById("playerContainer");
-    if (!container) return;
+    if (!container || !currentSourceKey) return;
 
     stopPreview(false);
     container.innerHTML = "";
 
+    const sourceKey = encodeURIComponent(currentSourceKey);
     art = new Artplayer({
         container,
-        url: `/stream/${ch.id}/index.m3u8`,
+        url: `/stream/${sourceKey}/${ch.id}/index.m3u8`,
         isLive: true,
         autoplay: true,
         theme: "#4f46e5",
@@ -169,23 +313,26 @@ const playStream = (ch) => {
 
 async function loadListFromServer() {
     try {
-        const res = await fetch("/api/list?t=" + Date.now());
+        const res = await fetch(withSourceQuery("/api/list?t=" + Date.now()));
         const data = await res.json();
         channels = Array.isArray(data) ? data : (data.channels || []);
 
         const channelCount = document.getElementById("channelCount");
         if (channelCount) channelCount.textContent = channels.length;
 
-        const m3uUrl = document.getElementById("m3uUrl");
-        if (m3uUrl) m3uUrl.value = `${window.location.origin}${PLAYLIST_PATH}`;
-
+        updatePlaylistUrl();
         renderPreview();
-    } catch (_) {}
+    } catch (_) {
+        channels = [];
+        const channelCount = document.getElementById("channelCount");
+        if (channelCount) channelCount.textContent = "0";
+        renderPreview();
+    }
 }
 
 async function checkStatus() {
     try {
-        const r = await fetch("/api/status?t=" + Date.now());
+        const r = await fetch(withSourceQuery("/api/status?t=" + Date.now()));
         const d = await r.json();
         const processCount = document.getElementById("processCount");
         const cpuUsage = document.getElementById("cpuUsage");
@@ -198,7 +345,7 @@ async function checkStatus() {
 
 async function loadConfigFromServer() {
     try {
-        const res = await fetch("/api/config");
+        const res = await fetch(withSourceQuery("/api/config"));
         const config = await res.json();
         const form = document.getElementById("configForm");
         if (!form) return;
@@ -213,6 +360,22 @@ async function loadConfigFromServer() {
             el.value = val;
         });
     } catch (_) {}
+}
+
+function exitExpertMode() {
+    isExpertMode = false;
+    const expertModeBtn = document.getElementById("expertModeBtn");
+    const configActions = document.getElementById("configActions");
+    const inputs = document.querySelectorAll("#configForm select");
+    inputs.forEach((i) => {
+        i.disabled = true;
+    });
+    if (configActions) {
+        configActions.classList.add("hidden");
+    }
+    if (expertModeBtn) {
+        expertModeBtn.textContent = "编辑配置";
+    }
 }
 
 function setupConfigActions() {
@@ -231,7 +394,7 @@ function setupConfigActions() {
         });
 
         configActions.classList.toggle("hidden", !isExpertMode);
-        expertModeBtn.textContent = isExpertMode ? "\u53d6\u6d88\u4fee\u6539" : "\u7f16\u8f91\u914d\u7f6e";
+        expertModeBtn.textContent = isExpertMode ? "取消修改" : "编辑配置";
     };
 
     saveConfigBtn.onclick = async () => {
@@ -243,25 +406,34 @@ function setupConfigActions() {
         });
 
         try {
-            const res = await fetch("/api/config", {
+            const res = await fetch(withSourceQuery("/api/config"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data),
             });
             if (!res.ok) {
-                throw new Error("\u4fdd\u5b58\u5931\u8d25");
+                throw new Error("保存失败");
             }
-            alert("\u914d\u7f6e\u5df2\u66f4\u65b0");
-            location.reload();
+
+            await loadConfigFromServer();
+            exitExpertMode();
+            alert("配置已更新");
         } catch (_) {
-            alert("\u4fdd\u5b58\u5931\u8d25");
+            alert("保存失败");
         }
     };
 
     resetConfigBtn.onclick = async () => {
-        if (!confirm("\u786e\u5b9a\u8981\u6062\u590d\u9ed8\u8ba4\u914d\u7f6e\u5417\uff1f")) return;
-        await fetch("/api/config?action=reset", { method: "POST" });
-        location.reload();
+        if (!confirm("确定要恢复默认配置吗？")) return;
+        try {
+            const res = await fetch(withSourceQuery("/api/config?action=reset"), { method: "POST" });
+            if (!res.ok) throw new Error();
+            await loadConfigFromServer();
+            exitExpertMode();
+            alert("配置已重置");
+        } catch (_) {
+            alert("重置失败");
+        }
     };
 }
 
@@ -302,39 +474,40 @@ function setupDragAndDrop() {
         if (!content) return;
         content.innerHTML = `
             <i data-lucide="check-circle" class="w-10 h-10 text-emerald-500 mx-auto mb-4"></i>
-            <p class="text-xs font-bold text-indigo-600">\u5df2\u9009\u62e9: ${file.name}</p>
+            <p class="text-xs font-bold text-indigo-600">已选择: ${file.name}</p>
         `;
         if (window.lucide) lucide.createIcons();
     }
 
     uploadBtn.onclick = async () => {
         if (!input.files || !input.files[0]) {
-            alert("\u8bf7\u5148\u9009\u62e9 M3U \u6587\u4ef6");
+            alert("请先选择 M3U 文件");
             return;
         }
 
         uploadBtn.disabled = true;
-        uploadBtn.textContent = "\u6b63\u5728\u5904\u7406...";
+        uploadBtn.textContent = "正在处理...";
 
         const fd = new FormData();
         fd.append("m3uFile", input.files[0]);
 
         try {
-            const res = await fetch("/api/upload", { method: "POST", body: fd });
+            const res = await fetch(withSourceQuery("/api/upload"), { method: "POST", body: fd });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "\u4e0a\u4f20\u5931\u8d25");
+                throw new Error(msg || "上传失败");
             }
 
             const data = await res.json();
-            alert(`\u5bfc\u5165\u6210\u529f\uff0c\u5df2\u89e3\u6790 ${data.count || 0} \u8def\u9891\u9053`);
+            alert(`导入成功，已解析 ${data.count || 0} 路频道`);
             await loadListFromServer();
+            await checkStatus();
             input.value = "";
         } catch (e) {
-            alert(`\u4e0a\u4f20\u5931\u8d25\uff1a${e.message || "\u8bf7\u6c42\u51fa\u9519"}`);
+            alert(`上传失败：${e.message || "请求出错"}`);
         } finally {
             uploadBtn.disabled = false;
-            uploadBtn.textContent = "\u4e0a\u4f20\u5e76\u8f6c\u6362";
+            uploadBtn.textContent = "上传并转换";
         }
     };
 }
@@ -347,31 +520,32 @@ function setupUrlImport() {
     const submit = async () => {
         const value = (urlInput.value || "").trim();
         if (!/^https?:\/\//i.test(value)) {
-            alert("\u8bf7\u8f93\u5165\u6709\u6548\u7684 http/https M3U \u8ba2\u9605\u94fe\u63a5");
+            alert("请输入有效的 http/https M3U 订阅链接");
             return;
         }
 
         uploadUrlBtn.disabled = true;
         const oldText = uploadUrlBtn.textContent;
-        uploadUrlBtn.textContent = "\u6b63\u5728\u5904\u7406...";
+        uploadUrlBtn.textContent = "正在处理...";
 
         try {
-            const res = await fetch("/api/upload/url", {
+            const res = await fetch(withSourceQuery("/api/upload/url"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ url: value }),
             });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "\u5bfc\u5165\u5931\u8d25");
+                throw new Error(msg || "导入失败");
             }
 
             const data = await res.json();
-            alert(`\u5bfc\u5165\u6210\u529f\uff0c\u5df2\u89e3\u6790 ${data.count || 0} \u8def\u9891\u9053`);
+            alert(`导入成功，已解析 ${data.count || 0} 路频道`);
             urlInput.value = "";
             await loadListFromServer();
+            await checkStatus();
         } catch (e) {
-            alert(`\u94fe\u63a5\u5bfc\u5165\u5931\u8d25\uff1a${e.message || "\u8bf7\u6c42\u51fa\u9519"}`);
+            alert(`链接导入失败：${e.message || "请求出错"}`);
         } finally {
             uploadUrlBtn.disabled = false;
             uploadUrlBtn.textContent = oldText;
@@ -394,17 +568,17 @@ function setupClearDataButton() {
     clearBtn.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (!confirm("\u786e\u5b9a\u6e05\u9664\u5df2\u5bfc\u5165\u7684\u6570\u636e\u5417\uff1f")) return;
+        if (!confirm("确定清除当前直播源已导入的数据吗？")) return;
 
         clearBtn.disabled = true;
         const oldText = clearBtn.textContent;
-        clearBtn.textContent = "\u6b63\u5728\u6e05\u9664...";
+        clearBtn.textContent = "正在清除...";
 
         try {
-            const res = await fetch("/api/data/clear", { method: "POST" });
+            const res = await fetch(withSourceQuery("/api/data/clear"), { method: "POST" });
             if (!res.ok) {
                 const msg = await res.text();
-                throw new Error(msg || "\u6e05\u9664\u5931\u8d25");
+                throw new Error(msg || "清除失败");
             }
 
             stopPreview(true);
@@ -423,9 +597,10 @@ function setupClearDataButton() {
             if (urlInput) urlInput.value = "";
 
             await loadListFromServer();
-            alert("\u5df2\u6e05\u9664\u5df2\u5bfc\u5165\u6570\u636e");
+            await checkStatus();
+            alert("已清除当前直播源导入数据");
         } catch (e) {
-            alert(`\u6e05\u9664\u5931\u8d25\uff1a${e.message || "\u8bf7\u6c42\u51fa\u9519"}`);
+            alert(`清除失败：${e.message || "请求出错"}`);
         } finally {
             clearBtn.disabled = false;
             clearBtn.textContent = oldText;
@@ -467,7 +642,7 @@ function setupCopyButton() {
         const url = m3uUrl.value || "";
         copyToClipboard(url).then(() => {
             const oldText = copyBtn.textContent;
-            copyBtn.textContent = "\u5df2\u590d\u5236";
+            copyBtn.textContent = "已复制";
             copyBtn.classList.replace("bg-slate-900", "bg-emerald-600");
             setTimeout(() => {
                 copyBtn.textContent = oldText;
@@ -483,4 +658,6 @@ function setupStopPreviewButton() {
     btn.onclick = () => stopPreview(true);
 }
 
-window.onload = init;
+window.onload = () => {
+    init().catch(() => {});
+};

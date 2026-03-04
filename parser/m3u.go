@@ -26,14 +26,13 @@ type Channel struct {
 }
 
 // downloadLogo 下载图标到本地并返回 web 访问路径
-func downloadLogo(id, remoteURL string) string {
+func downloadLogo(id, remoteURL, logoDir, webPrefix string) string {
 	if remoteURL == "" {
 		return "/static/logos/favicon.png"
 	}
 
 	// 准备目录
-	logoDir := filepath.Join("m3u", "logos")
-	os.MkdirAll(logoDir, 0755)
+	_ = os.MkdirAll(logoDir, 0755)
 
 	// 提取后缀名
 	ext := filepath.Ext(remoteURL)
@@ -42,7 +41,7 @@ func downloadLogo(id, remoteURL string) string {
 	}
 	fileName := id + ext
 	localPath := filepath.Join(logoDir, fileName)
-	webPath := "/logos/" + fileName
+	webPath := strings.TrimRight(webPrefix, "/") + "/" + fileName
 
 	// 如果文件已存在则跳过
 	if _, err := os.Stat(localPath); err == nil {
@@ -100,9 +99,8 @@ func ValidateStream(url string) bool {
 	return false
 }
 
-func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
-	outputDir := "m3u"
-	os.MkdirAll(outputDir, 0755)
+func ParseAndGenerate(inputPath, outputDir, serverAddr, streamPrefix, logoWebPrefix string) ([]Channel, error) {
+	_ = os.MkdirAll(outputDir, 0755)
 
 	file, err := os.Open(inputPath)
 	if err != nil {
@@ -200,7 +198,7 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 	mFile.WriteString("#EXTM3U\n")
 
 	for _, ch := range validChannels {
-		proxyUrl := fmt.Sprintf("%s/stream/%s/index.m3u8", serverAddr, ch.ID)
+		proxyUrl := fmt.Sprintf("%s%s/%s/index.m3u8", serverAddr, strings.TrimRight(streamPrefix, "/"), ch.ID)
 		mFile.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-name=\"%s\" tvg-logo=\"%s\" group-title=\"%s\",%s\n%s\n",
 			ch.Name, ch.Logo, ch.Group, ch.Name, proxyUrl))
 	}
@@ -208,10 +206,11 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 	// 2. 本地化图标并更新 Mapping (用于 index.html)
 	fmt.Println("🖼️ 正在同步下载频道图标至本地...")
 	var localMapping []Channel
+	logoDir := filepath.Join(outputDir, "logos")
 	for _, ch := range validChannels {
 		localCh := ch
 		// 调用下载并更新路径
-		localCh.Logo = downloadLogo(ch.ID, ch.Logo)
+		localCh.Logo = downloadLogo(ch.ID, ch.Logo, logoDir, logoWebPrefix)
 		localMapping = append(localMapping, localCh)
 	}
 
@@ -219,6 +218,6 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 	jsonData, _ := json.MarshalIndent(localMapping, "", "  ")
 	os.WriteFile(jsonPath, jsonData, 0644)
 
-	fmt.Printf("🚀 全部处理完成！有效视频频道: %d 个，图标已存至 m3u/logos/\n", len(validChannels))
+	fmt.Printf("🚀 全部处理完成！有效视频频道: %d 个，图标已存至 %s/\n", len(validChannels), logoDir)
 	return validChannels, nil
 }

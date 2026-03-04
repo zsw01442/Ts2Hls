@@ -28,6 +28,9 @@
         .group-tag { padding: 0.4rem 1rem; font-size: 0.75rem; font-weight: 700; border-radius: 0.75rem; border: 1px solid #e2e8f0; cursor: pointer; white-space: nowrap; background: #fff; }
         .group-tag.active { background-color: #4f46e5; color: #fff; border-color: #4f46e5; }
         .import-separator { text-align: center; color: #94a3b8; font-size: 10px; font-weight: 700; letter-spacing: 0.15em; margin: 12px 0; }
+        .source-btn { padding: 0.55rem 1rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 800; border: 1px solid #e2e8f0; color: #64748b; background: #fff; cursor: pointer; transition: all 0.2s; }
+        .source-btn.active { color: #4f46e5; background: #eef2ff; border-color: #c7d2fe; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.12); }
+        .source-btn:hover { border-color: #c7d2fe; color: #4f46e5; }
     </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen">
@@ -37,13 +40,23 @@
                 <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
                     <img src="/static/logo.png" class="w-6 h-6 object-contain" alt="Logo">
                 </div>
-                <h1 class="text-xl md:text-2xl font-black tracking-tight">Ts2Hls <span class="text-indigo-600 text-sm font-mono ml-1">v1.3.5</span></h1>
+                <h1 class="text-xl md:text-2xl font-black tracking-tight">Ts2Hls <span class="text-indigo-600 text-sm font-mono ml-1">v1.4.0</span></h1>
             </div>
             <div class="flex w-full md:w-64 bg-slate-100 p-1 rounded-xl shadow-inner">
                 <button id="tabConsole" class="tab-btn active">系统控制</button>
                 <button id="tabPreview" class="tab-btn inactive">直播预览</button>
             </div>
         </header>
+
+        <div class="bg-white rounded-[2rem] border border-slate-100 p-5 mb-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                <h3 class="font-bold flex items-center gap-2 text-sm uppercase text-slate-600 tracking-wider">
+                    <i data-lucide="layers" class="text-indigo-500 w-4"></i>直播源工作区
+                </h3>
+                <button id="renameSourceBtn" type="button" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">重命名当前直播源</button>
+            </div>
+            <div id="sourceSwitcher" class="flex flex-wrap gap-2"></div>
+        </div>
 
         <div id="consolePage" class="space-y-6">
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -220,7 +233,7 @@
                 <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] group-hover:text-indigo-600 transition-colors">开源项目</p>
                 <i data-lucide="github" class="w-4 h-4 text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </a>
-            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">&copy; 2026 TS2HLS v1.3.5</div>
+            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">&copy; 2026 TS2HLS v1.4.0</div>
         </footer>
     </div>
     <script src="/static/js/app.js"></script>
